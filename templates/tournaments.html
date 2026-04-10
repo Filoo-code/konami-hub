@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Tournaments - Compete for Glory{% endblock %}
+
+{% block content %}
+<h1>🎯 eFootball Tournaments</h1>
+<p class="page-description">Register for upcoming tournaments and compete for exclusive rewards</p>
+
+<div class="tournaments-grid">
+    {% for tournament in tournaments %}
+    <div class="tournament-card">
+        <div class="tournament-header">
+            <h2>{{ tournament.name }}</h2>
+            <span class="tournament-status {{ tournament.status }}">{{ tournament.status }}</span>
+        </div>
+        <div class="tournament-league">🏆 League: {{ tournament.league_name }}</div>
+        <p class="tournament-description">{{ tournament.description }}</p>
+        <div class="tournament-details">
+            <div>📅 {{ tournament.start_date }} to {{ tournament.end_date }}</div>
+            <div>👥 {{ tournament.current_participants|length }}/{{ tournament.max_participants }} participants</div>
+            <div>👑 Organized by: {{ tournament.created_by }}</div>
+        </div>
+        <div class="tournament-participants">
+            <strong>Participants:</strong>
+            <div class="participant-list">
+                {% for participant in tournament.current_participants %}
+                <span class="participant-tag">{{ participant }}</span>
+                {% else %}
+                <span class="no-participants">No participants yet</span>
+                {% endfor %}
+            </div>
+        </div>
+        
+        {% if user %}
+            {% if user.username in tournament.current_participants %}
+                <div class="tournament-actions">
+                    <a href="{{ url_for('tournament_chat', tournament_id=tournament.id) }}" class="chat-btn">💬 Join Tournament Chat</a>
+                </div>
+            {% elif tournament.status == 'upcoming' %}
+                <button class="join-tournament-btn" data-tournament-id="{{ tournament.id }}">Join Tournament</button>
+            {% endif %}
+        {% else %}
+            <button class="join-tournament-btn disabled" disabled>Login to Join</button>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+document.querySelectorAll('.join-tournament-btn').forEach(btn => {
+    if (!btn.classList.contains('disabled')) {
+        btn.addEventListener('click', async (e) => {
+            const tournamentId = btn.getAttribute('data-tournament-id');
+            const response = await fetch(`/api/tournaments/${tournamentId}/join`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                alert('✅ Successfully joined the tournament!');
+                location.reload();
+            } else {
+                alert('❌ Error: ' + (data.error || 'Failed to join tournament'));
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

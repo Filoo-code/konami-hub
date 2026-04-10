@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}{{ post.title }} | Konami Hub{% endblock %}
+
+{% block content %}
+<div>
+    <a href="{{ url_for('index') }}" class="back-home-btn">← Back to Hub</a>
+    
+    <div class="full-post-view">
+        <div class="post-emoji">{{ post.image_label or "⚽" }}</div>
+        <h1 class="full-post-title">{{ post.title }}</h1>
+        <div class="post-meta">By {{ post.author_name }} · {{ post.date }}</div>
+        <div class="full-post-body">{{ post.body|replace('\n', '<br>')|safe }}</div>
+    </div>
+    
+    <div class="comments-section">
+        <h3>🗣️ Community Comments ({{ comments|length }})</h3>
+        <div id="commentsList">
+            {% if comments %}
+                {% for comment in comments %}
+                <div class="comment-item" data-comment-id="{{ comment.id }}">
+                    <div>
+                        <span class="comment-author">{{ comment.user_name }}</span>
+                        <span class="comment-date">{{ comment.created_at }}</span>
+                    </div>
+                    <div class="comment-text">{{ comment.text }}</div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No comments yet. Be the first to discuss!</p>
+            {% endif %}
+        </div>
+        
+        {% if user %}
+        <div class="add-comment">
+            <textarea id="newCommentText" rows="3" placeholder="Share your eFootball thoughts..."></textarea>
+            <button id="submitCommentBtn" data-post-id="{{ post.id }}">💬 Post comment</button>
+        </div>
+        {% else %}
+        <p style="margin-top: 16px;"><strong>🔒 <a href="#" id="loginPromptLink">Login</a> to join the conversation about eFootball tactics & news.</strong></p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

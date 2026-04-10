@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Leagues - Join Competitive Play{% endblock %}
+
+{% block content %}
+<h1>🏆 eFootball Leagues</h1>
+<p class="page-description">Join competitive leagues and prove your skills against other players</p>
+
+<div class="leagues-grid">
+    {% for league in leagues %}
+    <div class="league-card">
+        <div class="league-header">
+            <h2>{{ league.name }}</h2>
+            <span class="league-status">{{ league.status }}</span>
+        </div>
+        <p class="league-description">{{ league.description }}</p>
+        <div class="league-details">
+            <div>👑 Created by: {{ league.created_by }}</div>
+            <div>📅 Created: {{ league.created_at }}</div>
+            <div>👥 Members: {{ league.members|length }}</div>
+        </div>
+        <div class="league-members">
+            <strong>Members:</strong>
+            <div class="member-tags">
+                {% for member in league.members %}
+                <span class="member-tag">{{ member }}</span>
+                {% else %}
+                <span class="no-members">No members yet</span>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="league-actions">
+            {% if user %}
+                {% if user.username in league.members %}
+                    <a href="{{ url_for('league_chat', league_id=league.id) }}" class="chat-btn">💬 Join League Chat</a>
+                {% else %}
+                    <button class="join-league-btn disabled" disabled>🔒 Join League (Admin Only)</button>
+                {% endif %}
+            {% else %}
+                <button class="join-league-btn disabled" disabled>🔒 Login to Join</button>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+.chat-btn {
+    display: inline-block;
+    background: #3b82f6;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 40px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: 0.2s;
+    width: 100%;
+    text-align: center;
+}
+
+.chat-btn:hover {
+    background: #2563eb;
+    transform: translateY(-2px);
+}
+
+.join-league-btn.disabled {
+    background: #cbd5e1;
+    cursor: not-allowed;
+    width: 100%;
+    padding: 10px 20px;
+    border-radius: 40px;
+    border: none;
+    font-weight: 600;
+}
+</style>
+{% endblock %}

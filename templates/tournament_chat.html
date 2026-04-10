@@ -1,0 +1,571 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tournament.name }} - Tournament Chat{% endblock %}
+
+{% block content %}
+<div class="chat-layout">
+    <div class="chat-sidebar">
+        <div class="chat-sidebar-header">
+            <h3>👥 Tournament Participants</h3>
+        </div>
+        <div class="members-list-sidebar" id="participantsList">
+            <div class="loading">Loading participants...</div>
+        </div>
+    </div>
+    
+    <div class="chat-main-area">
+        <div class="chat-header">
+            <h1>💬 {{ tournament.name }} Chat Room</h1>
+            <a href="{{ url_for('tournaments_page') }}" class="back-btn">← Back to Tournaments</a>
+        </div>
+        
+        <div class="tournament-info-card">
+            <h3>🏆 Tournament Information</h3>
+            <p><strong>Tournament Name:</strong> {{ tournament.name }}</p>
+            <p><strong>League:</strong> {{ tournament.league_name }}</p>
+            <p><strong>Dates:</strong> {{ tournament.start_date }} to {{ tournament.end_date }}</p>
+            <p><strong>Participants:</strong> {{ tournament.current_participants|length }}/{{ tournament.max_participants }}</p>
+            <div class="participants-list">
+                <strong>👥 Current Participants:</strong>
+                {% for participant in tournament.current_participants %}
+                <span class="participant-badge">{{ participant }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <div class="chat-info">
+            <div class="info-box">
+                <strong>💡 Available Commands:</strong>
+                <code>@fixtures</code> - Show tournament brackets &nbsp;|&nbsp;
+                <code>@bracket</code> - Show visual tournament bracket
+            </div>
+            <div class="info-box" style="margin-top: 10px; background: #fef3c7;">
+                <strong>📸 Match Evidence:</strong>
+                Click the 📷 button to upload match result screenshots to admin for verification.
+            </div>
+        </div>
+        
+        <div class="chat-main">
+            <div class="chat-messages" id="chatMessages">
+                {% for message in messages %}
+                <div class="message {% if message.username == '🏆 Tournament Bot' or message.username == '🏆 CHAMPION BOT 🏆' %}system-message{% endif %}">
+                    <span class="message-time">{{ message.time_display }}</span>
+                    <span class="message-user">{{ message.username }}:</span>
+                    <span class="message-text" style="white-space: pre-line;">{{ message.message }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Type your message... Use @fixtures for match schedule" autocomplete="off">
+                <label for="photoUpload" class="photo-upload-label" title="Send match screenshot to admin">📷</label>
+                <input type="file" id="photoUpload" accept="image/*" style="display: none;">
+                <button id="sendBtn">Send</button>
+            </div>
+        </div>
+        
+        {% if is_admin %}
+        <div class="admin-fixtures-panel">
+            <h3>📋 Admin Controls</h3>
+            
+            <div class="admin-controls">
+                <button id="clearChatBtn" class="clear-chat-btn">🧹 Clear All Chat Messages</button>
+            </div>
+            
+            <div class="fixtures-management">
+                <h4>📅 Manage Tournament Fixtures</h4>
+                <div class="current-fixtures">
+                    <div id="fixturesList">
+                        {% for fixture in fixtures %}
+                        <div class="fixture-item">
+                            <div class="fixture-info">
+                                <strong>{{ fixture.home_team }} vs {{ fixture.away_team }}</strong>
+                                <span class="fixture-datetime">📅 {{ fixture.date }} at {{ fixture.time }}</span>
+                                <span class="fixture-round">🎯 {{ fixture.round }}</span>
+                                {% if fixture.status == 'completed' %}
+                                <span class="fixture-result">✅ Result: {{ fixture.result }}</span>
+                                {% else %}
+                                <span class="fixture-status">⏳ Status: {{ fixture.status }}</span>
+                                {% endif %}
+                            </div>
+                            <div class="fixture-actions">
+                                {% if fixture.status != 'completed' and fixture.home_team != 'TBD' %}
+                                <button class="edit-fixture-btn" 
+                                        data-fixture-id="{{ fixture.id }}"
+                                        data-date="{{ fixture.date }}"
+                                        data-time="{{ fixture.time }}">
+                                    ✏️ Edit Date/Time
+                                </button>
+                                <button class="add-result-btn" data-fixture-id="{{ fixture.id }}">
+                                    📝 Add Result
+                                </button>
+                                {% elif fixture.status == 'completed' %}
+                                <span class="completed-badge">Completed</span>
+                                {% else %}
+                                <span class="pending-badge">Waiting for previous round</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% else %}
+                        <p class="no-fixtures">No fixtures scheduled yet. Add more participants to generate brackets!</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.chat-layout {
+    display: flex;
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.chat-sidebar {
+    width: 280px;
+    background: white;
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    height: fit-content;
+}
+
+.chat-sidebar-header {
+    border-bottom: 2px solid #e2e8f0;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+.chat-sidebar-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.members-list-sidebar {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.member-item-sidebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px;
+    margin-bottom: 8px;
+    background: #f8fafc;
+    border-radius: 12px;
+    transition: 0.2s;
+}
+
+.member-item-sidebar:hover {
+    background: #e0f2fe;
+}
+
+.member-name {
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.member-status {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+}
+
+.chat-member-btn {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.7rem;
+    transition: 0.2s;
+}
+
+.chat-member-btn:hover {
+    background: #2563eb;
+}
+
+.chat-main-area {
+    flex: 1;
+}
+
+.tournament-info-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+}
+
+.participant-badge {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin: 5px;
+    font-size: 0.85rem;
+}
+
+.photo-upload-label {
+    background: #10b981;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 40px;
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: 0.2s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.photo-upload-label:hover {
+    background: #059669;
+    transform: scale(1.05);
+}
+
+.admin-controls {
+    margin-bottom: 20px;
+    padding: 15px;
+    background: #fef3c7;
+    border-radius: 12px;
+    border-left: 4px solid #f59e0b;
+}
+
+.clear-chat-btn {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.clear-chat-btn:hover {
+    background: #dc2626;
+}
+
+.fixture-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    margin-bottom: 10px;
+    background: #f8fafc;
+    border-radius: 12px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.fixture-info {
+    flex: 1;
+}
+
+.fixture-round {
+    display: inline-block;
+    background: #8b5cf6;
+    color: white;
+    padding: 2px 10px;
+    border-radius: 15px;
+    font-size: 0.7rem;
+    margin-left: 10px;
+}
+
+.fixture-datetime {
+    display: inline-block;
+    font-size: 0.85rem;
+    color: #3b82f6;
+    margin-right: 15px;
+}
+
+.fixture-result {
+    display: inline-block;
+    background: #10b981;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.fixture-status {
+    display: inline-block;
+    background: #f59e0b;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+}
+
+.pending-badge {
+    display: inline-block;
+    background: #94a3b8;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+}
+
+.fixture-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.edit-fixture-btn, .add-result-btn {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    border: none;
+}
+
+.edit-fixture-btn {
+    background: #3b82f6;
+    color: white;
+}
+
+.add-result-btn {
+    background: #10b981;
+    color: white;
+}
+
+@media (max-width: 768px) {
+    .chat-layout {
+        flex-direction: column;
+    }
+    .chat-sidebar {
+        width: 100%;
+    }
+}
+</style>
+
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script>
+    const socket = io();
+    const tournamentId = "{{ tournament.id }}";
+    const username = "{{ user.username if user else '' }}";
+    const isAdmin = {{ 'true' if is_admin else 'false' }};
+    
+    // Join the chat room
+    socket.emit('join_tournament_chat', { tournament_id: tournamentId });
+    socket.emit('join_user_room');
+    
+    // Load tournament participants for chatting
+    async function loadTournamentParticipants() {
+        const response = await fetch(`/api/tournaments/${tournamentId}/participants`);
+        const data = await response.json();
+        
+        if (data.success && data.participants.length > 0) {
+            const participantsList = document.getElementById('participantsList');
+            participantsList.innerHTML = data.participants.map(participant => `
+                <div class="member-item-sidebar">
+                    <div class="member-name">
+                        <span class="member-status"></span>
+                        ${escapeHtml(participant)}
+                    </div>
+                    <button class="chat-member-btn" onclick="startPrivateChat('${participant}')">
+                        💬 Chat
+                    </button>
+                </div>
+            `).join('');
+        } else {
+            document.getElementById('participantsList').innerHTML = '<p class="no-members">No other participants in this tournament yet.</p>';
+        }
+    }
+    
+    // Start private chat with participant
+    function startPrivateChat(participantName) {
+        window.location.href = `/messages?user=${encodeURIComponent(participantName)}`;
+    }
+    
+    // Send message
+    document.getElementById('sendBtn').addEventListener('click', sendMessage);
+    document.getElementById('chatInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+    
+    function sendMessage() {
+        const input = document.getElementById('chatInput');
+        const message = input.value.trim();
+        if (message) {
+            socket.emit('send_tournament_chat_message', {
+                tournament_id: tournamentId,
+                message: message
+            });
+            input.value = '';
+        }
+    }
+    
+    // Receive messages
+    socket.on('chat_message', (data) => {
+        const messagesDiv = document.getElementById('chatMessages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message';
+        if (data.is_system) {
+            messageDiv.classList.add('system-message');
+        }
+        messageDiv.innerHTML = `
+            <span class="message-time">${escapeHtml(data.timestamp)}</span>
+            <span class="message-user">${escapeHtml(data.username)}:</span>
+            <span class="message-text" style="white-space: pre-line;">${escapeHtml(data.message)}</span>
+        `;
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    });
+    
+    // Photo upload to admin
+    document.getElementById('photoUpload')?.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        if (file.size > 5 * 1024 * 1024) {
+            alert('File too large! Maximum 5MB.');
+            return;
+        }
+        
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            alert('Invalid file type. Use JPG, PNG, GIF, or WEBP.');
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('photo', file);
+        
+        const matchId = prompt('Enter match ID (optional):', tournamentId);
+        if (matchId !== null) {
+            formData.append('match_id', matchId);
+        }
+        
+        const caption = prompt('Enter caption/description (optional):', 'Tournament match result');
+        if (caption !== null) {
+            formData.append('caption', caption);
+        }
+        
+        const response = await fetch('/api/upload-photo', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('✅ Photo sent to admin for review!');
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+        
+        e.target.value = '';
+    });
+    
+    // Auto-scroll to bottom on load
+    const messagesDiv = document.getElementById('chatMessages');
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Load participants on page load
+    loadTournamentParticipants();
+    
+    // Admin functions
+    if (isAdmin) {
+        document.getElementById('clearChatBtn')?.addEventListener('click', async () => {
+            if (confirm('⚠️ DANGER: Are you sure you want to clear ALL chat messages?')) {
+                const response = await fetch(`/api/chat/clear/tournament/${tournamentId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('chatMessages').innerHTML = '';
+                    alert('✅ Chat cleared successfully!');
+                } else {
+                    alert('❌ Error clearing chat');
+                }
+            }
+        });
+        
+        document.querySelectorAll('.edit-fixture-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const fixtureId = btn.getAttribute('data-fixture-id');
+                const currentDate = btn.getAttribute('data-date');
+                const currentTime = btn.getAttribute('data-time');
+                
+                const newDate = prompt('Enter new date (YYYY-MM-DD):', currentDate);
+                if (!newDate) return;
+                
+                const newTime = prompt('Enter new time (HH:MM):', currentTime);
+                if (!newTime) return;
+                
+                const response = await fetch(`/api/fixtures/${fixtureId}/update`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ date: newDate, time: newTime })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert('✅ Fixture updated successfully!');
+                    location.reload();
+                } else {
+                    alert('❌ Error updating fixture');
+                }
+            });
+        });
+        
+        document.querySelectorAll('.add-result-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const fixtureId = btn.getAttribute('data-fixture-id');
+                const homeScore = prompt('Enter home team score:');
+                if (homeScore === null) return;
+                
+                const awayScore = prompt('Enter away team score:');
+                if (awayScore === null) return;
+                
+                if (isNaN(homeScore) || isNaN(awayScore)) {
+                    alert('Please enter valid numbers!');
+                    return;
+                }
+                
+                const response = await fetch(`/api/fixtures/${fixtureId}/result`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        home_score: parseInt(homeScore),
+                        away_score: parseInt(awayScore)
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert('✅ Result added successfully!');
+                    location.reload();
+                } else {
+                    alert('❌ Error adding result');
+                }
+            });
+        });
+    }
+    
+    // Leave room on page unload
+    window.addEventListener('beforeunload', () => {
+        socket.emit('leave_tournament_chat', { tournament_id: tournamentId });
+    });
+</script>
+{% endblock %}

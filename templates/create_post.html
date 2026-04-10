@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Create New Post - Admin{% endblock %}
+
+{% block content %}
+<div class="post-form-container">
+    <div class="form-header">
+        <h1>✍️ Create New Article</h1>
+        <a href="{{ url_for('admin_posts') }}" class="cancel-btn">← Back to Posts</a>
+    </div>
+    
+    {% if error %}
+    <div class="error-message">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST" class="post-form">
+        <div class="form-group">
+            <label for="title">Title *</label>
+            <input type="text" id="title" name="title" required placeholder="Enter an engaging title...">
+        </div>
+        
+        <div class="form-group">
+            <label for="image_label">Emoji/Icon</label>
+            <input type="text" id="image_label" name="image_label" placeholder="e.g., ⚽, 🎮, 📊" value="⚽" maxlength="2">
+            <small>Choose an emoji to represent your post</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="excerpt">Short Excerpt (optional)</label>
+            <textarea id="excerpt" name="excerpt" rows="2" placeholder="A brief summary of your article..."></textarea>
+            <small>If left empty, will be auto-generated from the body</small>
+        </div>
+        
+        <div class="form-group">
+            <label for="body">Article Content *</label>
+            <textarea id="body" name="body" rows="12" required placeholder="Write your article content here... Use line breaks for paragraphs."></textarea>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="submit-btn">📤 Publish Article</button>
+            <a href="{{ url_for('admin_posts') }}" class="cancel-submit">Cancel</a>
+        </div>
+    </form>
+    
+    <div class="preview-hint">
+        <h3>💡 Tips for great articles:</h3>
+        <ul>
+            <li>Use clear, descriptive titles</li>
+            <li>Break content into paragraphs for readability</li>
+            <li>Include key information about eFootball updates, tactics, or player reviews</li>
+            <li>Add an emoji that represents your topic</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

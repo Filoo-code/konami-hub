@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Terms of Service - Konami Hub 2026{% endblock %}
+
+{% block content %}
+<div class="terms-container">
+    <h1>Terms of Service</h1>
+    <p class="last-updated">Last Updated: {{ datetime.now().strftime('%B %d, %Y') }}</p>
+    
+    <div class="terms-section">
+        <h2>1. Acceptance of Terms</h2>
+        <p>By using Konami Hub, you agree to these Terms of Service.</p>
+    </div>
+    
+    <div class="terms-section">
+        <h2>2. User Accounts</h2>
+        <ul>
+            <li>You must be 13 years or older to create an account</li>
+            <li>You are responsible for maintaining account security</li>
+            <li>One person may not have multiple accounts</li>
+            <li>We reserve the right to suspend or delete accounts that violate these terms</li>
+        </ul>
+    </div>
+    
+    <div class="terms-section">
+        <h2>3. User Conduct</h2>
+        <p>You agree not to:</p>
+        <ul>
+            <li>Harass, abuse, or threaten other users</li>
+            <li>Post offensive or inappropriate content</li>
+            <li>Cheat or exploit game mechanics</li>
+            <li>Impersonate other users or staff</li>
+            <li>Share account credentials</li>
+        </ul>
+    </div>
+    
+    <div class="terms-section">
+        <h2>4. Content Ownership</h2>
+        <p>You retain ownership of content you post, but grant Konami Hub a license to display and distribute it on our platform.</p>
+    </div>
+    
+    <div class="terms-section">
+        <h2>5. Termination</h2>
+        <p>We may terminate or suspend your account immediately for violating these terms.</p>
+    </div>
+    
+    <div class="terms-section">
+        <h2>6. Limitation of Liability</h2>
+        <p>Konami Hub is provided "as is" without warranties. We are not liable for any damages arising from your use of the service.</p>
+    </div>
+    
+    <div class="terms-section">
+        <h2>7. Changes to Terms</h2>
+        <p>We may modify these terms at any time. Continued use of the service constitutes acceptance of new terms.</p>
+    </div>
+    
+    <div class="terms-section">
+        <h2>8. Contact</h2>
+        <p>Questions about these terms? Contact us at legal@konamihub.com</p>
+    </div>
+</div>
+
+<style>
+.terms-container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+}
+
+.terms-container h1 {
+    color: #0b1a2e;
+    margin-bottom: 10px;
+}
+
+.last-updated {
+    color: #64748b;
+    margin-bottom: 30px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.terms-section {
+    margin-bottom: 30px;
+}
+
+.terms-section h2 {
+    color: #0b1a2e;
+    font-size: 1.3rem;
+    margin-bottom: 15px;
+}
+
+.terms-section p, .terms-section ul {
+    color: #334155;
+    line-height: 1.6;
+}
+
+.terms-section ul {
+    margin-left: 20px;
+}
+
+.terms-section li {
+    margin-bottom: 8px;
+}
+</style>
+{% endblock %}

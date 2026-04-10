@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}About Us - Konami Hub{% endblock %}
+
+{% block content %}
+<div class="about-container">
+    <h1>About Konami Hub</h1>
+    
+    <div class="about-section">
+        <h2>What is Konami Hub?</h2>
+        <p>Konami Hub is a community platform for eFootball players to connect, compete, and improve their gameplay.</p>
+    </div>
+    
+    <div class="about-section">
+        <h2>Our Mission</h2>
+        <p>To provide a friendly, competitive environment where eFootball fans can create leagues, join tournaments, and share their passion for the game.</p>
+    </div>
+    
+    <div class="about-section">
+        <h2>Features</h2>
+        <ul>
+            <li>Create and manage custom leagues</li>
+            <li>Join knockout tournaments</li>
+            <li>Real-time chat with players</li>
+            <li>Match result tracking and standings</li>
+            <li>Wall of Champions to celebrate winners</li>
+        </ul>
+    </div>
+    
+    <div class="about-section">
+        <h2>Disclaimer</h2>
+        <p>Konami Hub is an unofficial fan community. We are not affiliated with or endorsed by Konami or eFootball.</p>
+    </div>
+</div>
+
+<style>
+.about-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background: white;
+    border-radius: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+}
+
+.about-container h1 {
+    color: #0b1a2e;
+    margin-bottom: 20px;
+}
+
+.about-section {
+    margin-bottom: 25px;
+}
+
+.about-section h2 {
+    color: #0b1a2e;
+    font-size: 1.3rem;
+    margin-bottom: 10px;
+}
+
+.about-section p, .about-section ul {
+    color: #334155;
+    line-height: 1.6;
+}
+
+.about-section ul {
+    margin-left: 20px;
+}
+
+.about-section li {
+    margin-bottom: 5px;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Konami Hub 2026 | eFootball Community</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+    
+    <!-- Google AdSense - Only loads on homepage -->
+    {% if request.endpoint == 'index' %}
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-YOUR_PUBLISHER_ID"
+        crossorigin="anonymous"></script>
+    {% endif %}
+</head>
+<body>
+
+<header class="site-header">
+    <div class="container header-inner">
+        <div class="logo">
+            <h1>KONAMI <span>HUB</span> <span style="font-size: 0.8rem;">2026</span></h1>
+            <p>⚽ eFootball • tactics • news • community</p>
+        </div>
+        <div class="nav-links" id="navLinks">
+            <a href="{{ url_for('index') }}">🏠 Home</a>
+            <a href="{{ url_for('leagues_page') }}">🏆 Leagues</a>
+            <a href="{{ url_for('tournaments_page') }}">🎯 Tournaments</a>
+            {% if is_admin %}
+                <a href="{{ url_for('messages_page') }}" class="admin-link">📸 Photo Reviews</a>
+                <a href="{{ url_for('admin_posts') }}" class="admin-link">📝 Manage Posts</a>
+                <a href="{{ url_for('admin_dashboard') }}" class="admin-link">👑 Admin Panel</a>
+            {% endif %}
+            {% if user %}
+                <div class="user-greeting">
+                    <span>👋 {{ user.username }}</span>
+                    {% if user.is_admin %}
+                        <span class="admin-badge-nav">Admin</span>
+                    {% endif %}
+                    <button id="logoutBtn" class="logout-btn">Logout</button>
+                </div>
+            {% else %}
+                <div class="auth-buttons">
+                    <button id="showLoginBtn" class="btn-outline-light">Login</button>
+                    <button id="showRegisterBtn" class="btn-outline-light">Register</button>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</header>
+
+<main class="main-content container">
+    {% block content %}{% endblock %}
+</main>
+
+<footer>
+    <p>© 2026 Konami Hub — unofficial fan hub for eFootball™</p>
+    <p style="margin-top: 10px; font-size: 0.8rem;">
+        {% if user %}
+            Logged in as {{ user.username }} | 
+        {% endif %}
+        <a href="{{ url_for('index') }}" style="color: #94a3b8; text-decoration: none;">Home</a>
+        {% if is_admin %}
+            | <a href="{{ url_for('admin_dashboard') }}" style="color: #94a3b8; text-decoration: none;">Admin</a>
+        {% endif %}
+        | <a href="{{ url_for('privacy') }}" style="color: #94a3b8; text-decoration: none;">Privacy Policy</a>
+        | <a href="{{ url_for('terms') }}" style="color: #94a3b8; text-decoration: none;">Terms of Service</a>
+    </p>
+</footer>
+
+<!-- Auth Modal Container -->
+<div id="authModal" class="modal hidden">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <div id="authFormContainer"></div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script>
+    // Socket.IO connection for notifications
+    const socket = io();
+    
+    if ({{ 'true' if user else 'false' }}) {
+        socket.emit('join_user_room');
+        {% if is_admin %}
+            socket.emit('join_admin_room');
+        {% endif %}
+    }
+    
+    // Listen for new photo submission notifications (admin only)
+    {% if is_admin %}
+    socket.on('new_photo_submission', (data) => {
+        const notification = new Notification('New Photo Submission', {
+            body: `${data.from_user} uploaded a new match screenshot`,
+            icon: '/static/favicon.ico'
+        });
+        
+        // Update notification badge if on photo review page
+        if (window.location.pathname === '/messages') {
+            location.reload();
+        }
+    });
+    {% endif %}
+    
+    // Listen for photo status updates (users)
+    socket.on('photo_status_update', (data) => {
+        const notification = new Notification('Photo Status Update', {
+            body: data.message,
+            icon: '/static/favicon.ico'
+        });
+    });
+    
+    // Request notification permission
+    if (Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+</script>
+</body>
+</html>

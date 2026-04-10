@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: konami-hub-2026
+    runtime: python
+    repo: https://github.com/YOUR_USERNAME/konami-hub
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --worker-class eventlet -w 1 app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: RENDER
+        value: true
+    disk:
+      name: konami-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1

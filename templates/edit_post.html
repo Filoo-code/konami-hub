@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Post - {{ post.title }}{% endblock %}
+
+{% block content %}
+<div class="post-form-container">
+    <div class="form-header">
+        <h1>✏️ Edit Article</h1>
+        <a href="{{ url_for('admin_posts') }}" class="cancel-btn">← Back to Posts</a>
+    </div>
+    
+    {% if error %}
+    <div class="error-message">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST" class="post-form">
+        <div class="form-group">
+            <label for="title">Title *</label>
+            <input type="text" id="title" name="title" required value="{{ post.title }}">
+        </div>
+        
+        <div class="form-group">
+            <label for="image_label">Emoji/Icon</label>
+            <input type="text" id="image_label" name="image_label" value="{{ post.image_label }}" maxlength="2">
+        </div>
+        
+        <div class="form-group">
+            <label for="excerpt">Short Excerpt</label>
+            <textarea id="excerpt" name="excerpt" rows="2">{{ post.excerpt }}</textarea>
+        </div>
+        
+        <div class="form-group">
+            <label for="body">Article Content *</label>
+            <textarea id="body" name="body" rows="12" required>{{ post.body }}</textarea>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="submit-btn">💾 Save Changes</button>
+            <a href="{{ url_for('admin_posts') }}" class="cancel-submit">Cancel</a>
+        </div>
+    </form>
+    
+    <div class="warning-box">
+        <strong>⚠️ Note:</strong> Editing this post will update it immediately on the live site.
+    </div>
+</div>
+{% endblock %}

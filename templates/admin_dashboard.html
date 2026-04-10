@@ -1,0 +1,706 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Konami Hub 2026{% endblock %}
+
+{% block content %}
+<div class="admin-dashboard">
+    <h1>👑 Konami Hub 2026 Admin Dashboard</h1>
+    <p class="admin-welcome">Welcome, {{ user.username }}! Manage leagues, tournaments, and users. The system automatically generates fixtures and updates standings!</p>
+    
+    <div class="admin-grid">
+        <!-- Quick Actions -->
+        <div class="admin-card">
+            <h2>⚡ Quick Actions</h2>
+            <div class="quick-actions">
+                <a href="{{ url_for('create_post') }}" class="action-btn">📝 Create New Post</a>
+                <a href="{{ url_for('admin_posts') }}" class="action-btn">📋 Manage All Posts</a>
+            </div>
+        </div>
+        
+        <!-- Wall of Champions Management -->
+        <div class="admin-card">
+            <h2>🏆 Wall of Champions Management</h2>
+            <button id="resetChampionsBtn" class="reset-champions-btn" onclick="resetChampions()">
+                🗑️ Reset Wall of Champions
+            </button>
+            <p class="warning-text">⚠️ This will permanently delete ALL champion records! This action cannot be undone.</p>
+            
+            <div class="champions-list" style="margin-top: 20px; max-height: 300px; overflow-y: auto;">
+                <h3>Current Champions</h3>
+                {% for champion in champions %}
+                <div class="champion-item">
+                    <div class="champion-info">
+                        <strong>🏆 {{ champion.champion }}</strong>
+                        <span>{{ champion.competition_name }}</span>
+                        <small>{{ champion.date }}</small>
+                    </div>
+                    <button class="remove-champion-btn" data-champion-id="{{ champion.id }}" data-champion-name="{{ champion.champion }}">
+                        Remove
+                    </button>
+                </div>
+                {% else %}
+                <p>No champions yet. Be the first to win a league or tournament!</p>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Recent Posts -->
+        <div class="admin-card">
+            <h2>📰 Recent Posts</h2>
+            <div class="recent-posts">
+                {% for post in recent_posts %}
+                <div class="recent-post-item">
+                    <div class="recent-post-info">
+                        <strong>{{ post.title }}</strong>
+                        <small>{{ post.date }}</small>
+                    </div>
+                    <div class="recent-post-actions">
+                        <a href="{{ url_for('edit_post', post_id=post.id) }}" class="edit-link">Edit</a>
+                        <button class="delete-post-btn small" data-post-id="{{ post.id }}" data-post-title="{{ post.title }}">Delete</button>
+                    </div>
+                </div>
+                {% else %}
+                <p>No posts yet. <a href="{{ url_for('create_post') }}">Create your first post!</a></p>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Create League Section -->
+        <div class="admin-card">
+            <h2>🏆 Create New League</h2>
+            <p class="info-text">Leagues automatically generate fixtures when members are added!</p>
+            <form id="createLeagueForm">
+                <input type="text" id="leagueName" placeholder="League Name (e.g., Premier League 2026)" required>
+                <textarea id="leagueDesc" placeholder="League Description" rows="3"></textarea>
+                <button type="submit">Create League</button>
+            </form>
+            <div id="leagueMessage" class="message"></div>
+        </div>
+        
+        <!-- Add Member to League - Admin Only -->
+        <div class="admin-card">
+            <h2>👥 Add Member to League</h2>
+            <div class="league-members-add">
+                <strong>ℹ️ How it works:</strong>
+                <p class="note">• Add at least 2 members to generate fixtures<br>
+                • Bot automatically creates round-robin schedule<br>
+                • Each team plays every other team twice (home and away)<br>
+                • Standings update automatically after each match result<br>
+                • Members can join league chat with @table and @fixtures commands</p>
+            </div>
+            <select id="selectLeague">
+                <option value="">Select League</option>
+                {% for league in leagues %}
+                <option value="{{ league.id }}">{{ league.name }} ({{ league.members|length }} members)</option>
+                {% endfor %}
+            </select>
+            <input type="text" id="memberUsername" placeholder="Username to add">
+            <button id="addMemberBtn">Add Member & Generate Fixtures</button>
+            <div id="memberMessage" class="message"></div>
+        </div>
+        
+        <!-- Create Tournament -->
+        <div class="admin-card">
+            <h2>🎯 Create Tournament</h2>
+            <p class="info-text">Knockout tournament with automatic bracket generation!</p>
+            <form id="createTournamentForm">
+                <input type="text" id="tournamentName" placeholder="Tournament Name" required>
+                <select id="tournamentLeague" required>
+                    <option value="">Select League</option>
+                    {% for league in leagues %}
+                    <option value="{{ league.id }}">{{ league.name }}</option>
+                    {% endfor %}
+                </select>
+                <textarea id="tournamentDesc" placeholder="Tournament Description" rows="2"></textarea>
+                <input type="date" id="startDate" required>
+                <input type="date" id="endDate" required>
+                <input type="number" id="maxParticipants" placeholder="Max Participants" value="8" min="2" max="32">
+                <button type="submit">Create Tournament</button>
+            </form>
+            <div id="tournamentMessage" class="message"></div>
+        </div>
+        
+        <!-- Match Evidence Photos -->
+        <div class="admin-card">
+            <h2>📸 Match Evidence Photos</h2>
+            <div class="photo-filters">
+                <button onclick="loadPhotos('pending')" class="photo-filter-btn active">Pending</button>
+                <button onclick="loadPhotos('approved')" class="photo-filter-btn">Approved</button>
+                <button onclick="loadPhotos('rejected')" class="photo-filter-btn">Rejected</button>
+                <button onclick="loadPhotos('all')" class="photo-filter-btn">All</button>
+            </div>
+            <div id="photosList" class="photos-list">
+                <div class="loading">Loading photos...</div>
+            </div>
+        </div>
+        
+        <!-- Existing Leagues with Delete Option -->
+        <div class="admin-card">
+            <h2>📋 Existing Leagues</h2>
+            <div class="league-list">
+                {% for league in leagues %}
+                <div class="league-item">
+                    <div class="league-header-info">
+                        <strong>{{ league.name }}</strong>
+                        <span class="league-status-badge {{ league.status }}">{{ league.status }}</span>
+                    </div>
+                    <p class="league-description">{{ league.description }}</p>
+                    <div class="league-details-info">
+                        <small>👑 Created by: {{ league.created_by }}</small>
+                        <small>📅 Created: {{ league.created_at }}</small>
+                        <small>👥 Members: {{ league.members|length }}</small>
+                        <small>⚽ Matches per team: {{ (league.members|length - 1) * 2 if league.members|length > 1 else 0 }}</small>
+                    </div>
+                    <div class="league-members-list">
+                        <strong>Members:</strong>
+                        <div class="member-tags">
+                            {% for member in league.members %}
+                            <span class="member-tag">{{ member }}</span>
+                            {% else %}
+                            <span class="no-members">No members yet. Add members to generate fixtures!</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="league-actions">
+                        <a href="{{ url_for('league_chat', league_id=league.id) }}" class="view-chat-btn" target="_blank">💬 Join League Chat</a>
+                        <button class="delete-league-btn" data-league-id="{{ league.id }}" data-league-name="{{ league.name }}">🗑️ Delete League</button>
+                    </div>
+                </div>
+                {% else %}
+                <p class="no-leagues">No leagues created yet. Create one above!</p>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Existing Tournaments with Delete Option -->
+        <div class="admin-card">
+            <h2>🎮 Existing Tournaments</h2>
+            <div class="tournament-list">
+                {% for tournament in tournaments %}
+                <div class="tournament-item">
+                    <div class="tournament-header-info">
+                        <strong>{{ tournament.name }}</strong>
+                        <span class="tournament-status-badge {{ tournament.status }}">{{ tournament.status }}</span>
+                    </div>
+                    <p class="tournament-description">{{ tournament.description }}</p>
+                    <div class="tournament-details-info">
+                        <small>🏆 League: {{ tournament.league_name }}</small>
+                        <small>👥 Participants: {{ tournament.current_participants|length }}/{{ tournament.max_participants }}</small>
+                        <small>📅 {{ tournament.start_date }} to {{ tournament.end_date }}</small>
+                        <small>👑 Created by: {{ tournament.created_by }}</small>
+                    </div>
+                    <div class="tournament-participants-list">
+                        <strong>Participants:</strong>
+                        <div class="participant-tags">
+                            {% for participant in tournament.current_participants %}
+                            <span class="participant-tag">{{ participant }}</span>
+                            {% else %}
+                            <span class="no-participants">No participants yet. Players can join!</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <div class="tournament-actions">
+                        <button class="delete-tournament-btn" data-tournament-id="{{ tournament.id }}" data-tournament-name="{{ tournament.name }}">
+                            🗑️ Delete Tournament
+                        </button>
+                    </div>
+                    {% if tournament.current_participants|length >= 2 %}
+                    <div class="tournament-note">
+                        <small>✅ Brackets will be generated automatically when tournament starts!</small>
+                    </div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p class="no-tournaments">No tournaments created yet. Create one above!</p>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- User List -->
+        <div class="admin-card">
+            <h2>👤 Registered Users</h2>
+            <div class="user-list">
+                {% for user in users %}
+                <div class="user-item">
+                    <div class="user-info">
+                        <strong>{{ user.username }}</strong>
+                        <small>Joined: {{ user.joined }}</small>
+                    </div>
+                    {% if user.is_admin %}
+                    <span class="admin-badge">Admin</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <button id="refreshUsersBtn" class="refresh-btn">🔄 Refresh Users</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.reset-champions-btn {
+    background: #dc2626;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 40px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 10px 0;
+    transition: 0.2s;
+    width: 100%;
+}
+
+.reset-champions-btn:hover {
+    background: #b91c1c;
+    transform: translateY(-2px);
+}
+
+.warning-text {
+    color: #dc2626;
+    font-size: 0.8rem;
+    margin-top: 10px;
+    padding: 8px;
+    background: #fee2e2;
+    border-radius: 8px;
+}
+
+.champion-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 12px;
+    margin-bottom: 8px;
+}
+
+.champion-info {
+    flex: 1;
+}
+
+.champion-info strong {
+    display: block;
+    font-size: 1rem;
+}
+
+.champion-info span {
+    display: block;
+    font-size: 0.85rem;
+    color: #4a5568;
+}
+
+.champion-info small {
+    font-size: 0.7rem;
+    color: #718096;
+}
+
+.remove-champion-btn {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.remove-champion-btn:hover {
+    background: #dc2626;
+}
+
+.photo-filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.photo-filter-btn {
+    background: #e2e8f0;
+    padding: 8px 16px;
+    border-radius: 20px;
+    border: none;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.photo-filter-btn.active {
+    background: #3b82f6;
+    color: white;
+}
+
+.photo-item {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 15px;
+}
+
+.photo-info {
+    margin-bottom: 10px;
+}
+
+.photo-info strong {
+    color: #0f172a;
+}
+
+.photo-preview {
+    max-width: 200px;
+    max-height: 200px;
+    border-radius: 8px;
+    margin: 10px 0;
+    cursor: pointer;
+}
+
+.photo-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.approve-photo {
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 6px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+}
+
+.approve-photo:hover {
+    background: #059669;
+}
+
+.reject-photo {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 6px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+}
+
+.reject-photo:hover {
+    background: #dc2626;
+}
+
+.delete-tournament-btn {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 6px 15px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    width: 100%;
+}
+
+.delete-tournament-btn:hover {
+    background: #dc2626;
+}
+
+.tournament-actions {
+    margin-top: 10px;
+}
+
+.league-details-info small {
+    display: inline-block;
+    margin-right: 15px;
+}
+</style>
+
+<script>
+// Reset Champions
+async function resetChampions() {
+    if (confirm('⚠️ DANGER: Are you sure you want to reset the Wall of Champions?\n\nThis will permanently delete ALL champion records including:\n- League champions\n- Tournament champions\n- All history\n\n⚠️ THIS ACTION CANNOT BE UNDONE!\n\nAre you absolutely sure?')) {
+        
+        const response = await fetch('/api/admin/reset-champions', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('✅ Wall of Champions has been reset successfully!');
+            location.reload();
+        } else {
+            alert('❌ Error: ' + (data.error || 'Failed to reset champions'));
+        }
+    }
+}
+
+// Individual champion removal
+document.querySelectorAll('.remove-champion-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const championId = btn.getAttribute('data-champion-id');
+        const championName = btn.getAttribute('data-champion-name');
+        
+        if (confirm(`Remove ${championName} from Wall of Champions?`)) {
+            const response = await fetch(`/api/admin/champions/${championId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                alert('✅ Champion removed!');
+                location.reload();
+            } else {
+                alert('❌ Error removing champion');
+            }
+        }
+    });
+});
+
+// Delete Tournament function
+async function deleteTournament(tournamentId, tournamentName) {
+    if (confirm(`⚠️ DANGER: Delete tournament "${tournamentName}"?\n\nThis will permanently delete:\n❌ The tournament itself\n❌ All brackets and fixtures\n❌ All chat messages\n❌ All participant records\n\n⚠️ THIS ACTION CANNOT BE UNDONE!\n\nAre you absolutely sure?`)) {
+        
+        const response = await fetch(`/api/tournaments/${tournamentId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('✅ Tournament deleted successfully!');
+            location.reload();
+        } else {
+            alert('❌ Error: ' + (data.error || 'Failed to delete tournament'));
+        }
+    }
+}
+
+// Load photos for admin review
+async function loadPhotos(status) {
+    const response = await fetch(`/api/admin/photos?status=${status}`);
+    const data = await response.json();
+    
+    if (data.success) {
+        const container = document.getElementById('photosList');
+        if (data.photos.length === 0) {
+            container.innerHTML = '<div class="empty-state">No photos found</div>';
+            return;
+        }
+        
+        container.innerHTML = data.photos.map(photo => `
+            <div class="photo-item" data-photo-id="${photo.id}">
+                <div class="photo-info">
+                    <strong>From:</strong> ${escapeHtml(photo.from_user)}<br>
+                    <strong>Time:</strong> ${formatDateTime(photo.timestamp)}<br>
+                    ${photo.match_id ? `<strong>Match ID:</strong> ${escapeHtml(photo.match_id)}<br>` : ''}
+                    ${photo.caption ? `<strong>Caption:</strong> ${escapeHtml(photo.caption)}` : ''}
+                </div>
+                <img src="${photo.photo_url_full}" class="photo-preview" alt="Match evidence" onclick="window.open(this.src)">
+                <div class="photo-actions">
+                    <button class="approve-photo" onclick="updatePhotoStatus('${photo.id}', 'approved')">✅ Approve</button>
+                    <button class="reject-photo" onclick="updatePhotoStatus('${photo.id}', 'rejected')">❌ Reject</button>
+                </div>
+            </div>
+        `).join('');
+    }
+}
+
+async function updatePhotoStatus(photoId, status) {
+    const response = await fetch(`/api/admin/photos/${photoId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: status })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+        alert(`Photo ${status}!`);
+        loadPhotos('pending');
+    } else {
+        alert('Error: ' + data.error);
+    }
+}
+
+function formatDateTime(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Create League
+document.getElementById('createLeagueForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('leagueName').value;
+    const description = document.getElementById('leagueDesc').value;
+    
+    const response = await fetch('/api/leagues', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description })
+    });
+    
+    const data = await response.json();
+    const msgDiv = document.getElementById('leagueMessage');
+    
+    if (data.success) {
+        msgDiv.innerHTML = '<div class="success">✅ League created successfully! Refreshing...</div>';
+        setTimeout(() => location.reload(), 1500);
+    } else {
+        msgDiv.innerHTML = `<div class="error">❌ ${data.error}</div>`;
+    }
+});
+
+// Add Member to League
+document.getElementById('addMemberBtn')?.addEventListener('click', async () => {
+    const leagueId = document.getElementById('selectLeague').value;
+    const username = document.getElementById('memberUsername').value;
+    
+    if (!leagueId || !username) {
+        document.getElementById('memberMessage').innerHTML = '<div class="error">Please select league and enter username</div>';
+        return;
+    }
+    
+    const response = await fetch(`/api/leagues/${leagueId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+    });
+    
+    const data = await response.json();
+    const msgDiv = document.getElementById('memberMessage');
+    
+    if (data.success) {
+        msgDiv.innerHTML = '<div class="success">✅ Member added! Fixtures generated automatically. Refreshing...</div>';
+        setTimeout(() => location.reload(), 1500);
+    } else {
+        msgDiv.innerHTML = `<div class="error">❌ ${data.error}</div>`;
+    }
+});
+
+// Create Tournament
+document.getElementById('createTournamentForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = document.getElementById('tournamentName').value;
+    const league_id = document.getElementById('tournamentLeague').value;
+    const description = document.getElementById('tournamentDesc').value;
+    const start_date = document.getElementById('startDate').value;
+    const end_date = document.getElementById('endDate').value;
+    const max_participants = parseInt(document.getElementById('maxParticipants').value);
+    
+    const response = await fetch('/api/tournaments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, league_id, description, start_date, end_date, max_participants })
+    });
+    
+    const data = await response.json();
+    const msgDiv = document.getElementById('tournamentMessage');
+    
+    if (data.success) {
+        msgDiv.innerHTML = '<div class="success">✅ Tournament created successfully! Refreshing...</div>';
+        setTimeout(() => location.reload(), 1500);
+    } else {
+        msgDiv.innerHTML = `<div class="error">❌ ${data.error}</div>`;
+    }
+});
+
+// Delete Post function
+async function deletePost(postId, postTitle) {
+    if (confirm(`⚠️ Are you sure you want to delete "${postTitle}"?\n\nThis will also delete all comments associated with this post.\n\nThis action cannot be undone!`)) {
+        const response = await fetch(`/api/admin/posts/${postId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('✅ Post deleted successfully!');
+            location.reload();
+        } else {
+            alert('❌ Error: ' + (data.error || 'Failed to delete post'));
+        }
+    }
+}
+
+// Delete League function
+async function deleteLeague(leagueId, leagueName) {
+    if (confirm(`⚠️ DANGER: Delete "${leagueName}"?\n\nThis will permanently delete:\n❌ The league itself\n❌ All tournaments in this league\n❌ All fixtures and match results\n❌ All chat messages and history\n❌ All league standings\n\n⚠️ THIS ACTION CANNOT BE UNDONE!\n\nAre you absolutely sure?`)) {
+        
+        const response = await fetch(`/api/leagues/${leagueId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert('✅ League deleted successfully!');
+            location.reload();
+        } else {
+            alert('❌ Error: ' + (data.error || 'Failed to delete league'));
+        }
+    }
+}
+
+// Refresh Users list
+document.getElementById('refreshUsersBtn')?.addEventListener('click', async () => {
+    const response = await fetch('/api/users');
+    const data = await response.json();
+    
+    if (data.success) {
+        const userListDiv = document.querySelector('.user-list');
+        userListDiv.innerHTML = '';
+        data.users.forEach(user => {
+            const userDiv = document.createElement('div');
+            userDiv.className = 'user-item';
+            userDiv.innerHTML = `
+                <div class="user-info">
+                    <strong>${escapeHtml(user.username)}</strong>
+                    <small>Joined: ${user.joined}</small>
+                </div>
+                ${user.is_admin ? '<span class="admin-badge">Admin</span>' : ''}
+            `;
+            userListDiv.appendChild(userDiv);
+        });
+        alert('✅ Users refreshed!');
+    } else {
+        alert('❌ Error refreshing users');
+    }
+});
+
+// Attach delete event listeners
+document.querySelectorAll('.delete-post-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const postId = btn.getAttribute('data-post-id');
+        const postTitle = btn.getAttribute('data-post-title');
+        deletePost(postId, postTitle);
+    });
+});
+
+document.querySelectorAll('.delete-league-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const leagueId = btn.getAttribute('data-league-id');
+        const leagueName = btn.getAttribute('data-league-name');
+        deleteLeague(leagueId, leagueName);
+    });
+});
+
+document.querySelectorAll('.delete-tournament-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        const tournamentId = btn.getAttribute('data-tournament-id');
+        const tournamentName = btn.getAttribute('data-tournament-name');
+        deleteTournament(tournamentId, tournamentName);
+    });
+});
+
+// Load initial photos
+setTimeout(() => loadPhotos('pending'), 500);
+</script>
+{% endblock %}

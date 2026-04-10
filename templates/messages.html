@@ -1,0 +1,292 @@
+{% extends "base.html" %}
+
+{% block title %}Photo Submissions - Admin Review{% endblock %}
+
+{% block content %}
+<div class="admin-photos-container">
+    <h1>📸 Match Evidence Photos</h1>
+    <p class="page-description">Review photos submitted by users as evidence for match results</p>
+    
+    <div class="photo-filters">
+        <button onclick="loadPhotos('pending')" class="photo-filter-btn active">Pending</button>
+        <button onclick="loadPhotos('approved')" class="photo-filter-btn">Approved</button>
+        <button onclick="loadPhotos('rejected')" class="photo-filter-btn">Rejected</button>
+        <button onclick="loadPhotos('all')" class="photo-filter-btn">All</button>
+    </div>
+    
+    <div id="photosList" class="photos-list">
+        <div class="loading">Loading photos...</div>
+    </div>
+</div>
+
+<style>
+.admin-photos-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.page-description {
+    color: #4a5568;
+    margin-bottom: 30px;
+}
+
+.photo-filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+}
+
+.photo-filter-btn {
+    background: #e2e8f0;
+    padding: 10px 20px;
+    border-radius: 30px;
+    border: none;
+    cursor: pointer;
+    transition: 0.2s;
+    font-weight: 500;
+}
+
+.photo-filter-btn.active {
+    background: #3b82f6;
+    color: white;
+}
+
+.photo-filter-btn:hover {
+    transform: translateY(-2px);
+}
+
+.photos-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+.photo-item {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    transition: transform 0.2s;
+}
+
+.photo-item:hover {
+    transform: translateY(-3px);
+}
+
+.photo-info {
+    margin-bottom: 15px;
+}
+
+.photo-info p {
+    margin: 8px 0;
+}
+
+.photo-info strong {
+    color: #0f172a;
+}
+
+.photo-preview {
+    width: 100%;
+    max-height: 250px;
+    object-fit: cover;
+    border-radius: 12px;
+    cursor: pointer;
+    margin: 10px 0;
+    transition: 0.2s;
+}
+
+.photo-preview:hover {
+    opacity: 0.9;
+}
+
+.photo-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.approve-photo {
+    background: #10b981;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 25px;
+    cursor: pointer;
+    font-weight: 600;
+    flex: 1;
+    transition: 0.2s;
+}
+
+.approve-photo:hover {
+    background: #059669;
+}
+
+.reject-photo {
+    background: #ef4444;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 25px;
+    cursor: pointer;
+    font-weight: 600;
+    flex: 1;
+    transition: 0.2s;
+}
+
+.reject-photo:hover {
+    background: #dc2626;
+}
+
+.photo-status {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 10px;
+}
+
+.status-pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.status-approved {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-rejected {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.loading {
+    text-align: center;
+    padding: 50px;
+    color: #64748b;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 50px;
+    color: #64748b;
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 768px) {
+    .photos-list {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+<script>
+    const socket = io();
+    
+    // Join admin room for real-time notifications
+    socket.emit('join_user_room');
+    
+    // Load photos based on status
+    async function loadPhotos(status) {
+        // Update active button
+        document.querySelectorAll('.photo-filter-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.textContent.toLowerCase().includes(status) || 
+                (status === 'all' && btn.textContent.toLowerCase().includes('all'))) {
+                btn.classList.add('active');
+            }
+        });
+        
+        const response = await fetch(`/api/admin/photos?status=${status}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const container = document.getElementById('photosList');
+            if (data.photos.length === 0) {
+                container.innerHTML = '<div class="empty-state">📭 No photos found</div>';
+                return;
+            }
+            
+            container.innerHTML = data.photos.map(photo => `
+                <div class="photo-item" data-photo-id="${photo.id}">
+                    <div class="photo-info">
+                        <p><strong>📸 From:</strong> ${escapeHtml(photo.from_user)}</p>
+                        <p><strong>⏰ Time:</strong> ${formatDateTime(photo.timestamp)}</p>
+                        ${photo.match_id ? `<p><strong>🏆 Match ID:</strong> ${escapeHtml(photo.match_id)}</p>` : ''}
+                        ${photo.caption ? `<p><strong>📝 Caption:</strong> ${escapeHtml(photo.caption)}</p>` : ''}
+                    </div>
+                    <img src="${photo.photo_url_full}" class="photo-preview" alt="Match evidence" onclick="window.open(this.src)">
+                    <div class="photo-status status-${photo.status}">
+                        ${photo.status.toUpperCase()}
+                    </div>
+                    <div class="photo-actions">
+                        ${photo.status === 'pending' ? `
+                            <button class="approve-photo" onclick="updatePhotoStatus('${photo.id}', 'approved')">✅ Approve</button>
+                            <button class="reject-photo" onclick="updatePhotoStatus('${photo.id}', 'rejected')">❌ Reject</button>
+                        ` : `
+                            <button class="approve-photo" onclick="updatePhotoStatus('${photo.id}', 'pending')">🔄 Reset to Pending</button>
+                        `}
+                    </div>
+                </div>
+            `).join('');
+        }
+    }
+    
+    async function updatePhotoStatus(photoId, status) {
+        const response = await fetch(`/api/admin/photos/${photoId}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: status })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            alert(`✅ Photo ${status}!`);
+            // Reload current view
+            const activeBtn = document.querySelector('.photo-filter-btn.active');
+            const currentStatus = activeBtn.textContent.toLowerCase().trim();
+            loadPhotos(currentStatus === 'all' ? 'all' : currentStatus);
+        } else {
+            alert('❌ Error: ' + data.error);
+        }
+    }
+    
+    // Listen for new photo submissions (real-time)
+    socket.on('new_photo_submission', (data) => {
+        const notification = new Notification('New Photo Submission', {
+            body: `${data.from_user} uploaded a new match screenshot`,
+            icon: '/static/favicon.ico'
+        });
+        
+        // Reload current view if on pending
+        const activeBtn = document.querySelector('.photo-filter-btn.active');
+        if (activeBtn && activeBtn.textContent.toLowerCase().includes('pending')) {
+            loadPhotos('pending');
+        }
+    });
+    
+    function formatDateTime(timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleString();
+    }
+    
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Load initial photos
+    loadPhotos('pending');
+    
+    // Request notification permission
+    if (Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+</script>
+{% endblock %}

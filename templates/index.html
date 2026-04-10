@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Home - eFootball News & Community{% endblock %}
+
+{% block content %}
+<div class="homepage">
+    <!-- Top Banner Ad - Only on Homepage -->
+    <div class="ad-container ad-top">
+        <ins class="adsbygoogle"
+             style="display:block"
+             data-ad-client="ca-pub-YOUR_PUBLISHER_ID"
+             data-ad-slot="YOUR_AD_SLOT_1"
+             data-ad-format="auto"
+             data-full-width-responsive="true"></ins>
+        <script>
+            (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+    </div>
+    
+    <!-- Wall of Champions Section -->
+    <div class="wall-of-champions">
+        <h2>🏆 WALL OF CHAMPIONS 🏆</h2>
+        <div class="champions-grid">
+            {% if champions %}
+                {% for champion in champions[:10] %}
+                <div class="champion-card">
+                    <div class="champion-icon">👑</div>
+                    <div class="champion-info">
+                        <strong>{{ champion.champion }}</strong>
+                        <span>{{ champion.competition_name }}</span>
+                        <small>{{ champion.date }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p class="no-champions">No champions yet. Be the first to win a league or tournament!</p>
+            {% endif %}
+        </div>
+    </div>
+    
+    <h1>Latest eFootball News</h1>
+    <div class="blog-grid">
+        {% for post in posts %}
+        <div class="post-card">
+            <div class="post-img">{{ post.image_label or "⚽" }}</div>
+            <div class="post-content">
+                <h3 class="post-title">{{ post.title }}</h3>
+                <div class="post-meta">
+                    <span>✍️ {{ post.author_name }}</span>
+                    <span>📅 {{ post.date }}</span>
+                </div>
+                <p class="post-excerpt">{{ post.excerpt }}</p>
+                <a href="{{ url_for('post_detail', post_id=post.id) }}" class="read-more">Read full article →</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Sidebar Ad - Only on Homepage -->
+    <div class="ad-container ad-sidebar">
+        <ins class="adsbygoogle"
+             style="display:block"
+             data-ad-client="ca-pub-YOUR_PUBLISHER_ID"
+             data-ad-slot="YOUR_AD_SLOT_2"
+             data-ad-format="rectangle"
+             data-full-width-responsive="true"></ins>
+        <script>
+            (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+    </div>
+</div>
+
+<style>
+/* Ad Container Styles - Only visible on homepage */
+.ad-container {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 10px;
+    margin: 20px 0;
+    text-align: center;
+    border: 1px solid #e2e8f0;
+}
+
+.ad-top {
+    margin-bottom: 30px;
+}
+
+.ad-sidebar {
+    margin-top: 30px;
+}
+
+/* Make ads responsive */
+@media (min-width: 768px) {
+    .homepage {
+        position: relative;
+    }
+    
+    .ad-sidebar {
+        position: sticky;
+        top: 20px;
+        float: right;
+        width: 300px;
+        margin-left: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .blog-grid {
+        overflow: hidden;
+    }
+}
+
+@media (max-width: 768px) {
+    .ad-sidebar {
+        width: 100%;
+    }
+}
+
+/* Ad disclaimer */
+.ad-container::before {
+    content: "Advertisement";
+    display: block;
+    font-size: 0.7rem;
+    color: #64748b;
+    margin-bottom: 5px;
+}
+</style>
+{% endblock %}
