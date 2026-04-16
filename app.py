@@ -1,49 +1,71 @@
-import eventlet
-eventlet.monkey_patch()
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
-from flask_socketio import SocketIO, emit, join_room, leave_room
-from flask_session import Session
-import sqlite3
 import os
+import sys
+import traceback
 from datetime import datetime, timedelta
 import uuid
 import random
+import sqlite3
 from contextlib import contextmanager
 from werkzeug.utils import secure_filename
 
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, send_file
+from flask_session import Session
+from flask_socketio import SocketIO, emit, join_room, leave_room
+
+# Initialize Flask app first
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'konami-hub-2026-secret-key')
 app.config['SESSION_TYPE'] = 'filesystem'
 Session(app)
 
-# Configure for Render.com
-if os.environ.get('RENDER'):
-    app.config['PREFERRED_URL_SCHEME'] = 'https'
-
-# Use simple threading mode for local development
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
-print("Running with threading async mode (compatible with all platforms)")
-
-# Database path - use Render's persistent disk if available
-if os.environ.get('RENDER_DISK_PATH'):
-    DATA_DIR = os.environ.get('RENDER_DISK_PATH')
+# Configure for different platforms
+if os.environ.get('FLY_APP_NAME'):
+    # Fly.io configuration
+    DATA_DIR = '/data'
     DATABASE_PATH = os.path.join(DATA_DIR, 'konami_hub.db')
     UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
+    app.config['PREFERRED_URL_SCHEME'] = 'https'
+    print(f"Running on Fly.io - Data dir: {DATA_DIR}")
+elif os.environ.get('RENDER'):
+    # Render.com configuration
+    DATA_DIR = '/opt/render/project/src/data'
+    DATABASE_PATH = os.path.join(DATA_DIR, 'konami_hub.db')
+    UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
+    app.config['PREFERRED_URL_SCHEME'] = 'https'
+    print(f"Running on Render - Data dir: {DATA_DIR}")
 else:
-    DATA_DIR = '.'
+    # Local development
+    DATA_DIR = 'data'
     DATABASE_PATH = 'konami_hub.db'
     UPLOAD_FOLDER = 'uploads'
-
-# File upload configuration
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+    print(f"Running locally - Data dir: {DATA_DIR}")
 
 # Ensure directories exist
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# File upload configuration
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# SocketIO - try eventlet first for production, fallback to threading for local
+try:
+    # Only try eventlet if on Fly.io or Render
+    if os.environ.get('FLY_APP_NAME') or os.environ.get('RENDER'):
+        import eventlet
+        eventlet.monkey_patch()
+        socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+        print("Running with eventlet async mode (production)")
+    else:
+        raise ImportError("Using threading for local development")
+except (ImportError, RuntimeError):
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+    print("Running with threading async mode (development)")
+
+# ==================== DATABASE ====================
 
 @contextmanager
 def get_db():
@@ -212,7 +234,7 @@ def init_database():
             )
         ''')
         
-        # Admin photos table for match evidence
+        # Admin photos table
         conn.execute('''
             CREATE TABLE IF NOT EXISTS admin_photos (
                 id TEXT PRIMARY KEY,
@@ -225,7 +247,7 @@ def init_database():
             )
         ''')
         
-        # Insert default admin user if not exists
+        # Insert default admin user
         cursor = conn.execute('SELECT * FROM users WHERE username = ?', ('pro_gamer',))
         if not cursor.fetchone():
             conn.execute('''
@@ -233,7 +255,7 @@ def init_database():
                 VALUES (?, ?, ?, ?, ?)
             ''', ('u2', 'pro_gamer', 'goal2026', datetime.now().strftime('%Y-%m-%d'), 1))
         
-        # Insert default regular user if not exists
+        # Insert default regular user
         cursor = conn.execute('SELECT * FROM users WHERE username = ?', ('efootball_fan',))
         if not cursor.fetchone():
             conn.execute('''
@@ -241,7 +263,7 @@ def init_database():
                 VALUES (?, ?, ?, ?, ?)
             ''', ('u1', 'efootball_fan', 'pass123', datetime.now().strftime('%Y-%m-%d'), 0))
         
-        # Insert default post if not exists
+        # Insert default post
         cursor = conn.execute('SELECT * FROM posts LIMIT 1')
         if not cursor.fetchone():
             conn.execute('''
@@ -252,17 +274,17 @@ def init_database():
                   'The latest eFootball 2026 update introduces revolutionary AI, cross-platform progression, and the new Ultimate Team mode.',
                   '⚽', 'January 15, 2026', 'sys', 'Konami Insider'))
 
+    print("Database initialized successfully")
+
 # ==================== DATABASE HELPER FUNCTIONS ====================
 
 def get_users():
     with get_db() as conn:
-        cursor = conn.execute('SELECT * FROM users')
-        return list_from_cursor(cursor)
+        return list_from_cursor(conn.execute('SELECT * FROM users'))
 
 def get_posts():
     with get_db() as conn:
-        cursor = conn.execute('SELECT * FROM posts ORDER BY date DESC')
-        return list_from_cursor(cursor)
+        return list_from_cursor(conn.execute('SELECT * FROM posts ORDER BY date DESC'))
 
 def save_post(post):
     with get_db() as conn:
@@ -279,8 +301,7 @@ def delete_post(post_id):
 
 def get_comments():
     with get_db() as conn:
-        cursor = conn.execute('SELECT * FROM comments ORDER BY created_at DESC')
-        return list_from_cursor(cursor)
+        return list_from_cursor(conn.execute('SELECT * FROM comments ORDER BY created_at DESC'))
 
 def save_comment(comment):
     with get_db() as conn:
@@ -292,20 +313,15 @@ def save_comment(comment):
 
 def get_leagues():
     with get_db() as conn:
-        cursor = conn.execute('SELECT * FROM leagues')
-        leagues = list_from_cursor(cursor)
-        
+        leagues = list_from_cursor(conn.execute('SELECT * FROM leagues'))
         for league in leagues:
-            member_cursor = conn.execute('SELECT username FROM league_members WHERE league_id = ?', (league['id'],))
-            league['members'] = [row['username'] for row in member_cursor.fetchall()]
-            
-            standing_cursor = conn.execute('''
-                SELECT * FROM league_standings 
-                WHERE league_id = ? 
+            members = conn.execute('SELECT username FROM league_members WHERE league_id = ?', (league['id'],))
+            league['members'] = [row['username'] for row in members.fetchall()]
+            standings = conn.execute('''
+                SELECT * FROM league_standings WHERE league_id = ? 
                 ORDER BY points DESC, goal_difference DESC, goals_for DESC
             ''', (league['id'],))
-            league['standings'] = list_from_cursor(standing_cursor)
-        
+            league['standings'] = list_from_cursor(standings)
         return leagues
 
 def save_league(league):
@@ -338,13 +354,10 @@ def delete_league(league_id):
 
 def get_tournaments():
     with get_db() as conn:
-        cursor = conn.execute('SELECT * FROM tournaments')
-        tournaments = list_from_cursor(cursor)
-        
+        tournaments = list_from_cursor(conn.execute('SELECT * FROM tournaments'))
         for tournament in tournaments:
-            participant_cursor = conn.execute('SELECT username FROM tournament_participants WHERE tournament_id = ?', (tournament['id'],))
-            tournament['current_participants'] = [row['username'] for row in participant_cursor.fetchall()]
-        
+            participants = conn.execute('SELECT username FROM tournament_participants WHERE tournament_id = ?', (tournament['id'],))
+            tournament['current_participants'] = [row['username'] for row in participants.fetchall()]
         return tournaments
 
 def save_tournament(tournament):
@@ -370,8 +383,7 @@ def delete_tournament(tournament_id):
 
 def get_chat_messages():
     with get_db() as conn:
-        cursor = conn.execute('SELECT * FROM chat_messages ORDER BY timestamp ASC')
-        return list_from_cursor(cursor)
+        return list_from_cursor(conn.execute('SELECT * FROM chat_messages ORDER BY timestamp ASC'))
 
 def save_chat_message(message):
     with get_db() as conn:
@@ -390,8 +402,7 @@ def clear_chat_messages(chat_type, id):
 
 def get_fixtures():
     with get_db() as conn:
-        cursor = conn.execute('SELECT * FROM fixtures ORDER BY date ASC')
-        return list_from_cursor(cursor)
+        return list_from_cursor(conn.execute('SELECT * FROM fixtures ORDER BY date ASC'))
 
 def save_fixture(fixture):
     with get_db() as conn:
@@ -409,8 +420,7 @@ def delete_fixtures_by_league(league_id):
 
 def get_champions():
     with get_db() as conn:
-        cursor = conn.execute('SELECT * FROM champions ORDER BY date DESC')
-        return list_from_cursor(cursor)
+        return list_from_cursor(conn.execute('SELECT * FROM champions ORDER BY date DESC'))
 
 def save_champion(champion):
     with get_db() as conn:
@@ -431,44 +441,7 @@ def delete_champion_by_id(champion_id):
 def is_admin(user):
     return user and user.get('username') == 'pro_gamer'
 
-def announce_champion(competition_type, competition_name, champion_name):
-    champion_entry = {
-        'id': str(uuid.uuid4()),
-        'type': competition_type,
-        'competition_name': competition_name,
-        'champion': champion_name,
-        'date': datetime.now().strftime('%Y-%m-%d'),
-        'season': datetime.now().strftime('%Y')
-    }
-    save_champion(champion_entry)
-    
-    if competition_type == 'league':
-        leagues = get_leagues()
-        league = next((l for l in leagues if l['name'] == competition_name), None)
-        if league:
-            announcement = f"🏆 CHAMPION ANNOUNCEMENT! 🏆\n\nCongratulations {champion_name}! You are the CHAMPION of {competition_name}!\n\nThis champion has been added to the Wall of Champions!"
-            socketio.emit('chat_message', {
-                'username': '🏆 CHAMPION BOT 🏆',
-                'message': announcement,
-                'timestamp': datetime.now().strftime('%H:%M:%S'),
-                'is_system': True
-            }, room=f"league_{league['id']}")
-
-def check_and_declare_league_champion(league_id):
-    leagues = get_leagues()
-    league = next((l for l in leagues if l['id'] == league_id), None)
-    if not league or league.get('champion_declared'):
-        return
-    
-    fixtures = get_fixtures()
-    league_fixtures = [f for f in fixtures if f.get('league_id') == league_id]
-    unplayed = [f for f in league_fixtures if not f.get('played')]
-    
-    if len(unplayed) == 0 and league.get('standings') and len(league['standings']) > 0:
-        champion = league['standings'][0]['username']
-        announce_champion('league', league['name'], champion)
-        league['champion_declared'] = True
-        save_league(league)
+# ==================== LEAGUE & TOURNAMENT FUNCTIONS ====================
 
 def generate_league_fixtures(league_id, members):
     delete_fixtures_by_league(league_id)
@@ -513,141 +486,10 @@ def generate_league_fixtures(league_id, members):
     
     socketio.emit('chat_message', {
         'username': '⚽ League Bot',
-        'message': f'🏆 League fixtures generated!\n\n📊 {len(members)} teams\n⚽ {total_matches} total matches\n🎯 Each team will play {matches_per_team} matches\n\nGood luck to all teams! 🎉',
+        'message': f'🏆 League fixtures generated!\n\n📊 {len(members)} teams\n⚽ {total_matches} total matches\n🎯 Each team will play {matches_per_team} matches',
         'timestamp': datetime.now().strftime('%H:%M:%S'),
         'is_system': True
     }, room=f"league_{league_id}")
-
-def generate_tournament_fixtures(tournament_id, participants):
-    fixtures = get_fixtures()
-    for f in fixtures:
-        if f.get('tournament_id') == tournament_id:
-            with get_db() as conn:
-                conn.execute('DELETE FROM fixtures WHERE id = ?', (f['id'],))
-    
-    if len(participants) < 2:
-        return
-    
-    shuffled = participants.copy()
-    random.shuffle(shuffled)
-    
-    start_date = datetime.now() + timedelta(days=14)
-    round_names = {
-        2: ["Final"],
-        4: ["Semi-finals", "Final"],
-        8: ["Quarter-finals", "Semi-finals", "Final"],
-        16: ["Round of 16", "Quarter-finals", "Semi-finals", "Final"],
-        32: ["Round of 32", "Round of 16", "Quarter-finals", "Semi-finals", "Final"]
-    }
-    
-    participant_count = len(shuffled)
-    if participant_count in round_names:
-        rounds = round_names[participant_count]
-    else:
-        import math
-        nearest_power = 2 ** math.ceil(math.log2(participant_count))
-        if nearest_power == 16:
-            rounds = ["Round of 16", "Quarter-finals", "Semi-finals", "Final"]
-        elif nearest_power == 8:
-            rounds = ["Quarter-finals", "Semi-finals", "Final"]
-        elif nearest_power == 4:
-            rounds = ["Semi-finals", "Final"]
-        else:
-            rounds = ["Final"]
-    
-    first_round_name = rounds[0]
-    for idx in range(0, len(shuffled), 2):
-        if idx + 1 < len(shuffled):
-            fixture = {
-                'id': str(uuid.uuid4()),
-                'league_id': None,
-                'tournament_id': tournament_id,
-                'home_team': shuffled[idx],
-                'away_team': shuffled[idx + 1],
-                'date': (start_date + timedelta(days=idx * 2)).strftime('%Y-%m-%d'),
-                'time': '20:00',
-                'result': None,
-                'status': 'scheduled',
-                'round': first_round_name,
-                'played': False,
-                'winner': None
-            }
-            save_fixture(fixture)
-    
-    create_next_round_placeholders(tournament_id, len(shuffled) // 2, rounds, start_date)
-
-def create_next_round_placeholders(tournament_id, matches_in_round, rounds, start_date):
-    if len(rounds) <= 1:
-        return
-    
-    next_round_name = rounds[1]
-    matches_in_next_round = matches_in_round // 2
-    days_offset = matches_in_round * 2 + 7
-    
-    for i in range(matches_in_next_round):
-        placeholder_fixture = {
-            'id': str(uuid.uuid4()),
-            'league_id': None,
-            'tournament_id': tournament_id,
-            'home_team': 'TBD',
-            'away_team': 'TBD',
-            'date': (start_date + timedelta(days=days_offset + i * 2)).strftime('%Y-%m-%d'),
-            'time': '20:00',
-            'result': None,
-            'status': 'pending',
-            'round': next_round_name,
-            'played': False,
-            'winner': None
-        }
-        save_fixture(placeholder_fixture)
-    
-    create_next_round_placeholders(tournament_id, matches_in_next_round, rounds[1:], start_date)
-
-def update_tournament_progress(tournament_id, completed_fixture_id):
-    fixtures = get_fixtures()
-    tournament_fixtures = [f for f in fixtures if f.get('tournament_id') == tournament_id]
-    
-    completed_fixture = next((f for f in tournament_fixtures if f['id'] == completed_fixture_id), None)
-    if not completed_fixture or not completed_fixture.get('result'):
-        return
-    
-    home_score, away_score = map(int, completed_fixture['result'].split('-'))
-    winner = completed_fixture['home_team'] if home_score > away_score else completed_fixture['away_team']
-    completed_fixture['winner'] = winner
-    save_fixture(completed_fixture)
-    
-    round_order = ['Round of 32', 'Round of 16', 'Quarter-finals', 'Semi-finals', 'Final']
-    current_round = completed_fixture['round']
-    current_round_idx = round_order.index(current_round) if current_round in round_order else -1
-    
-    if current_round_idx >= 0 and current_round_idx + 1 < len(round_order):
-        next_round_name = round_order[current_round_idx + 1]
-        next_round_fixtures = [f for f in tournament_fixtures if f['round'] == next_round_name]
-        
-        round_fixtures = [f for f in tournament_fixtures if f['round'] == current_round]
-        fixture_index = round_fixtures.index(completed_fixture)
-        next_round_index = fixture_index // 2
-        
-        if next_round_index < len(next_round_fixtures):
-            next_fixture = next_round_fixtures[next_round_index]
-            
-            if next_fixture.get('home_team') == 'TBD' or not next_fixture.get('home_team'):
-                next_fixture['home_team'] = winner
-                save_fixture(next_fixture)
-            elif next_fixture.get('away_team') == 'TBD' or not next_fixture.get('away_team'):
-                next_fixture['away_team'] = winner
-                save_fixture(next_fixture)
-                
-                if next_fixture['home_team'] != 'TBD' and next_fixture['away_team'] != 'TBD':
-                    next_fixture['status'] = 'scheduled'
-                    save_fixture(next_fixture)
-                    
-                    socketio.emit('chat_message', {
-                        'username': '🏆 Tournament Bot',
-                        'message': f'New match scheduled: {next_fixture["home_team"]} vs {next_fixture["away_team"]} in the {next_round_name}!',
-                        'timestamp': datetime.now().strftime('%H:%M:%S'),
-                        'is_system': True
-                    }, room=f"tournament_{tournament_id}")
 
 def update_league_standings(league_id):
     leagues = get_leagues()
@@ -710,6 +552,45 @@ def update_league_standings(league_id):
     save_league(league)
     check_and_declare_league_champion(league_id)
 
+def check_and_declare_league_champion(league_id):
+    leagues = get_leagues()
+    league = next((l for l in leagues if l['id'] == league_id), None)
+    if not league or league.get('champion_declared'):
+        return
+    
+    fixtures = get_fixtures()
+    league_fixtures = [f for f in fixtures if f.get('league_id') == league_id]
+    unplayed = [f for f in league_fixtures if not f.get('played')]
+    
+    if len(unplayed) == 0 and league.get('standings') and len(league['standings']) > 0:
+        champion = league['standings'][0]['username']
+        announce_champion('league', league['name'], champion)
+        league['champion_declared'] = True
+        save_league(league)
+
+def announce_champion(competition_type, competition_name, champion_name):
+    champion_entry = {
+        'id': str(uuid.uuid4()),
+        'type': competition_type,
+        'competition_name': competition_name,
+        'champion': champion_name,
+        'date': datetime.now().strftime('%Y-%m-%d'),
+        'season': datetime.now().strftime('%Y')
+    }
+    save_champion(champion_entry)
+    
+    if competition_type == 'league':
+        leagues = get_leagues()
+        league = next((l for l in leagues if l['name'] == competition_name), None)
+        if league:
+            announcement = f"🏆 CHAMPION ANNOUNCEMENT! 🏆\n\nCongratulations {champion_name}! You are the CHAMPION of {competition_name}!"
+            socketio.emit('chat_message', {
+                'username': '🏆 CHAMPION BOT 🏆',
+                'message': announcement,
+                'timestamp': datetime.now().strftime('%H:%M:%S'),
+                'is_system': True
+            }, room=f"league_{league['id']}")
+
 # ==================== PAGE ROUTES ====================
 
 @app.route('/')
@@ -718,11 +599,6 @@ def index():
     champions = get_champions()
     user = session.get('user')
     return render_template('index.html', posts=posts, champions=champions, user=user, is_admin=is_admin(user))
-    
-@app.route('/about')
-def about():
-    user = session.get('user')
-    return render_template('about.html', user=user, is_admin=is_admin(user))
 
 @app.route('/privacy')
 def privacy():
@@ -733,6 +609,11 @@ def privacy():
 def terms():
     user = session.get('user')
     return render_template('terms.html', user=user, is_admin=is_admin(user), datetime=datetime)
+
+@app.route('/about')
+def about():
+    user = session.get('user')
+    return render_template('about.html', user=user, is_admin=is_admin(user))
 
 @app.route('/messages')
 def messages_page():
@@ -1024,7 +905,7 @@ def add_member_to_league(league_id):
         
         socketio.emit('chat_message', {
             'username': '⚽ Bot',
-            'message': f'{username} has joined the league! Fixtures have been generated. Use @fixtures to see your matches!',
+            'message': f'{username} has joined the league! Fixtures have been generated.',
             'timestamp': datetime.now().strftime('%H:%M:%S'),
             'is_system': True
         }, room=f"league_{league_id}")
@@ -1077,10 +958,6 @@ def create_tournament():
         'champion_declared': False
     }
     save_tournament(new_tournament)
-    
-    if len(new_tournament['current_participants']) >= 2:
-        generate_tournament_fixtures(tournament_id, new_tournament['current_participants'])
-    
     return jsonify({'success': True, 'tournament': new_tournament})
 
 @app.route('/api/tournaments/<tournament_id>', methods=['DELETE'])
@@ -1111,18 +988,6 @@ def join_tournament(tournament_id):
     
     tournament['current_participants'].append(username)
     save_tournament(tournament)
-    
-    existing_fixtures = get_fixtures()
-    tournament_has_fixtures = any(f.get('tournament_id') == tournament_id for f in existing_fixtures)
-    
-    if len(tournament['current_participants']) >= 2 and not tournament_has_fixtures:
-        generate_tournament_fixtures(tournament_id, tournament['current_participants'])
-        socketio.emit('chat_message', {
-            'username': '🏆 Tournament Bot',
-            'message': f'🎯 Tournament brackets have been generated! {len(tournament["current_participants"])} players will compete.',
-            'timestamp': datetime.now().strftime('%H:%M:%S'),
-            'is_system': True
-        }, room=f"tournament_{tournament_id}")
     
     return jsonify({'success': True, 'participants': tournament['current_participants']})
 
@@ -1184,34 +1049,6 @@ def update_fixture_result(fixture_id):
                 'is_system': True
             }, room=f"league_{fixture['league_id']}")
     
-    if fixture.get('tournament_id'):
-        update_tournament_progress(fixture['tournament_id'], fixture_id)
-        
-        if fixture.get('round') == 'Final':
-            home_score_val = int(home_score)
-            away_score_val = int(away_score)
-            champion = fixture['home_team'] if home_score_val > away_score_val else fixture['away_team']
-            tournaments = get_tournaments()
-            tournament = next((t for t in tournaments if t['id'] == fixture['tournament_id']), None)
-            if tournament and not tournament.get('champion_declared'):
-                announce_champion('tournament', tournament['name'], champion)
-                tournament['champion_declared'] = True
-                save_tournament(tournament)
-                
-                socketio.emit('chat_message', {
-                    'username': '🏆 CHAMPION BOT 🏆',
-                    'message': f'🎉🎉🎉 {champion} has won {tournament["name"]}! 🎉🎉🎉\n\n🏆 Congratulations to the champion! 🏆',
-                    'timestamp': datetime.now().strftime('%H:%M:%S'),
-                    'is_system': True
-                }, room=f"tournament_{fixture['tournament_id']}")
-        else:
-            socketio.emit('chat_message', {
-                'username': '🏆 Tournament Bot',
-                'message': f'✅ Match completed! {fixture["home_team"]} {home_score} - {away_score} {fixture["away_team"]}',
-                'timestamp': datetime.now().strftime('%H:%M:%S'),
-                'is_system': True
-            }, room=f"tournament_{fixture['tournament_id']}")
-    
     return jsonify({'success': True, 'fixture': fixture})
 
 @app.route('/api/chat/clear/<chat_type>/<id>', methods=['DELETE'])
@@ -1252,16 +1089,6 @@ def reset_champions():
         return jsonify({'success': False, 'error': 'Admin privileges required'}), 403
     
     delete_all_champions()
-    
-    leagues = get_leagues()
-    for league in leagues:
-        socketio.emit('chat_message', {
-            'username': '🏆 Admin Bot',
-            'message': '🏆 The Wall of Champions has been reset by an admin! New season starts now! 🏆',
-            'timestamp': datetime.now().strftime('%H:%M:%S'),
-            'is_system': True
-        }, room=f"league_{league['id']}")
-    
     return jsonify({'success': True, 'message': 'Wall of Champions reset successfully'})
 
 @app.route('/api/admin/champions/<champion_id>', methods=['DELETE'])
@@ -1290,14 +1117,14 @@ def upload_photo_to_admin():
         return jsonify({'success': False, 'error': 'No file selected'}), 400
     
     if not allowed_file(file.filename):
-        return jsonify({'success': False, 'error': 'File type not allowed. Use PNG, JPG, JPEG, GIF, or WEBP'}), 400
+        return jsonify({'success': False, 'error': 'File type not allowed'}), 400
     
     file.seek(0, 2)
     file_size = file.tell()
     file.seek(0)
     
     if file_size > MAX_FILE_SIZE:
-        return jsonify({'success': False, 'error': f'File too large. Max {MAX_FILE_SIZE // (1024*1024)}MB'}), 400
+        return jsonify({'success': False, 'error': f'File too large. Max 5MB'}), 400
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     original_filename = secure_filename(file.filename)
@@ -1467,7 +1294,7 @@ def handle_send_chat_message(data):
         else:
             emit('chat_message', {
                 'username': '⚽ Bot',
-                'message': 'No standings available yet. Results will appear here once matches are played.',
+                'message': 'No standings available yet.',
                 'timestamp': datetime.now().strftime('%H:%M:%S'),
                 'is_system': True
             }, room=f"league_{league_id}")
@@ -1503,7 +1330,7 @@ def handle_send_chat_message(data):
         else:
             emit('chat_message', {
                 'username': '⚽ Bot',
-                'message': 'No fixtures scheduled yet. Add more members to generate fixtures!',
+                'message': 'No fixtures scheduled yet.',
                 'timestamp': datetime.now().strftime('%H:%M:%S'),
                 'is_system': True
             }, room=f"league_{league_id}")
@@ -1536,7 +1363,7 @@ def handle_join_tournament_chat(data):
         join_room(f"tournament_{tournament_id}")
         emit('chat_message', {
             'username': '🏆 Tournament Bot',
-            'message': f'👋 {username} has joined the tournament chat! Use @fixtures to see your match schedule.',
+            'message': f'👋 {username} has joined the tournament chat!',
             'timestamp': datetime.now().strftime('%H:%M:%S'),
             'is_system': True
         }, room=f"tournament_{tournament_id}")
@@ -1572,22 +1399,11 @@ def handle_send_tournament_chat_message(data):
             fixtures_text = "🏆 TOURNAMENT BRACKETS 🏆\n"
             fixtures_text += "================================\n"
             
-            rounds = {}
             for f in tournament_fixtures:
-                round_name = f.get('round', 'Round 1')
-                if round_name not in rounds:
-                    rounds[round_name] = []
-                rounds[round_name].append(f)
-            
-            for round_name, matches in rounds.items():
-                fixtures_text += f"\n📌 {round_name.upper()}:\n"
-                for f in matches:
-                    if f.get('result'):
-                        fixtures_text += f"   ✅ {f['home_team']} {f['result']} {f['away_team']}\n"
-                    elif f.get('home_team') == 'TBD' or f.get('away_team') == 'TBD':
-                        fixtures_text += f"   ⏳ Winner of previous round\n"
-                    else:
-                        fixtures_text += f"   ⏳ {f['home_team']} vs {f['away_team']} - {f['date']}\n"
+                if f.get('result'):
+                    fixtures_text += f"✅ {f['home_team']} {f['result']} {f['away_team']}\n"
+                else:
+                    fixtures_text += f"⏳ {f['home_team']} vs {f['away_team']} - {f['date']}\n"
             
             emit('chat_message', {
                 'username': '🏆 Tournament Bot',
@@ -1598,46 +1414,7 @@ def handle_send_tournament_chat_message(data):
         else:
             emit('chat_message', {
                 'username': '🏆 Tournament Bot',
-                'message': 'Tournament brackets will be generated once enough players join!',
-                'timestamp': datetime.now().strftime('%H:%M:%S'),
-                'is_system': True
-            }, room=f"tournament_{tournament_id}")
-    
-    elif message.lower() == '@bracket':
-        fixtures = get_fixtures()
-        tournament_fixtures = [f for f in fixtures if f.get('tournament_id') == tournament_id]
-        
-        if tournament_fixtures:
-            bracket_text = "🏆 TOURNAMENT BRACKET 🏆\n"
-            bracket_text += "================================\n"
-            
-            rounds = {}
-            for f in tournament_fixtures:
-                round_name = f.get('round', 'Round 1')
-                if round_name not in rounds:
-                    rounds[round_name] = []
-                rounds[round_name].append(f)
-            
-            for round_name, matches in rounds.items():
-                bracket_text += f"\n📌 {round_name.upper()}:\n"
-                for f in matches:
-                    if f.get('result'):
-                        bracket_text += f"   ✅ {f['home_team']} {f['result']} {f['away_team']}\n"
-                    elif f.get('home_team') == 'TBD' or f.get('away_team') == 'TBD':
-                        bracket_text += f"   ⏳ Winner of previous round\n"
-                    else:
-                        bracket_text += f"   ⏳ {f['home_team']} vs {f['away_team']}\n"
-            
-            emit('chat_message', {
-                'username': '🏆 Tournament Bot',
-                'message': bracket_text,
-                'timestamp': datetime.now().strftime('%H:%M:%S'),
-                'is_system': True
-            }, room=f"tournament_{tournament_id}")
-        else:
-            emit('chat_message', {
-                'username': '🏆 Tournament Bot',
-                'message': 'No bracket available yet.',
+                'message': 'No fixtures scheduled yet.',
                 'timestamp': datetime.now().strftime('%H:%M:%S'),
                 'is_system': True
             }, room=f"tournament_{tournament_id}")
@@ -1660,6 +1437,22 @@ def handle_send_tournament_chat_message(data):
             'timestamp': datetime.now().strftime('%H:%M:%S'),
             'is_system': False
         }, room=f"tournament_{tournament_id}")
+
+# ==================== ERROR HANDLERS ====================
+
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    print("=" * 50)
+    print("ERROR TRACEBACK:")
+    traceback.print_exc()
+    print("=" * 50)
+    return render_template('500.html'), 500
+
+# ==================== RUN APP ====================
 
 if __name__ == '__main__':
     init_database()

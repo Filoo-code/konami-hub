@@ -1,0 +1,21 @@
+app = "konami-hub"
+primary_region = "iad"
+
+[build]
+  [build.args]
+    PYTHON_VERSION = "3.11.0"
+
+[env]
+  FLASK_ENV = "production"
+  FLY_APP_NAME = "konami-hub"
+
+[http_service]
+  internal_port = 5000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[mounts]]
+  source = "konami_data"
+  destination = "/data"
