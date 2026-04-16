@@ -18,21 +18,22 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'konami-hub-2026-secret-
 app.config['SESSION_TYPE'] = 'filesystem'
 Session(app)
 
+# ==================== DATABASE CONFIGURATION ====================
 # Configure for different platforms
-if os.environ.get('FLY_APP_NAME'):
-    # Fly.io configuration
-    DATA_DIR = '/data'
-    DATABASE_PATH = os.path.join(DATA_DIR, 'konami_hub.db')
-    UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
-    app.config['PREFERRED_URL_SCHEME'] = 'https'
-    print(f"Running on Fly.io - Data dir: {DATA_DIR}")
-elif os.environ.get('RENDER'):
+if os.environ.get('RENDER'):
     # Render.com configuration
     DATA_DIR = '/opt/render/project/src/data'
     DATABASE_PATH = os.path.join(DATA_DIR, 'konami_hub.db')
     UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
     app.config['PREFERRED_URL_SCHEME'] = 'https'
     print(f"Running on Render - Data dir: {DATA_DIR}")
+elif os.environ.get('FLY_APP_NAME'):
+    # Fly.io configuration
+    DATA_DIR = '/data'
+    DATABASE_PATH = os.path.join(DATA_DIR, 'konami_hub.db')
+    UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
+    app.config['PREFERRED_URL_SCHEME'] = 'https'
+    print(f"Running on Fly.io - Data dir: {DATA_DIR}")
 else:
     # Local development
     DATA_DIR = 'data'
@@ -51,10 +52,10 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# SocketIO - try eventlet first for production, fallback to threading for local
+# ==================== SOCKET.IO ====================
+# SocketIO - try eventlet for production, fallback to threading for local
 try:
-    # Only try eventlet if on Fly.io or Render
-    if os.environ.get('FLY_APP_NAME') or os.environ.get('RENDER'):
+    if os.environ.get('RENDER') or os.environ.get('FLY_APP_NAME'):
         import eventlet
         eventlet.monkey_patch()
         socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
