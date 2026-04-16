@@ -28,14 +28,12 @@ if os.environ.get('RENDER'):
     app.config['PREFERRED_URL_SCHEME'] = 'https'
     print(f"Running on Render - Data dir: {DATA_DIR}")
 elif os.environ.get('FLY_APP_NAME'):
-    # Fly.io configuration
     DATA_DIR = '/data'
     DATABASE_PATH = os.path.join(DATA_DIR, 'konami_hub.db')
     UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
     app.config['PREFERRED_URL_SCHEME'] = 'https'
     print(f"Running on Fly.io - Data dir: {DATA_DIR}")
 else:
-    # Local development
     DATA_DIR = 'data'
     DATABASE_PATH = os.path.join(DATA_DIR, 'konami_hub.db')
     UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
@@ -47,15 +45,14 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # File upload configuration
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_FILE_SIZE = 5 * 1024 * 1024
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# ==================== SOCKET.IO ====================
-# SocketIO - use threading for Render (more compatible)
+# SocketIO
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
-print("Running with threading async mode (compatible with all platforms)")
+print("Running with threading async mode")
 
 # ==================== DATABASE ====================
 
@@ -79,200 +76,196 @@ def list_from_cursor(cursor):
     return [dict_from_row(row) for row in cursor.fetchall()]
 
 def init_database():
-    try:
-        with get_db() as conn:
-            # Users table
+    """Initialize database tables - this MUST run before any requests"""
+    print("Initializing database...")
+    with get_db() as conn:
+        # Users table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                joined TEXT NOT NULL,
+                is_admin INTEGER DEFAULT 0
+            )
+        ''')
+        
+        # Posts table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS posts (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                excerpt TEXT,
+                body TEXT NOT NULL,
+                image_label TEXT,
+                date TEXT NOT NULL,
+                author_id TEXT,
+                author_name TEXT
+            )
+        ''')
+        
+        # Comments table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS comments (
+                id TEXT PRIMARY KEY,
+                post_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                user_name TEXT NOT NULL,
+                text TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        
+        # Leagues table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS leagues (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                status TEXT DEFAULT 'active',
+                champion_declared INTEGER DEFAULT 0
+            )
+        ''')
+        
+        # League members table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS league_members (
+                league_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                PRIMARY KEY (league_id, username)
+            )
+        ''')
+        
+        # League standings table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS league_standings (
+                league_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                played INTEGER DEFAULT 0,
+                won INTEGER DEFAULT 0,
+                drawn INTEGER DEFAULT 0,
+                lost INTEGER DEFAULT 0,
+                goals_for INTEGER DEFAULT 0,
+                goals_against INTEGER DEFAULT 0,
+                goal_difference INTEGER DEFAULT 0,
+                points INTEGER DEFAULT 0,
+                PRIMARY KEY (league_id, username)
+            )
+        ''')
+        
+        # Tournaments table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS tournaments (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                league_id TEXT NOT NULL,
+                league_name TEXT NOT NULL,
+                description TEXT,
+                start_date TEXT NOT NULL,
+                end_date TEXT NOT NULL,
+                max_participants INTEGER DEFAULT 16,
+                status TEXT DEFAULT 'upcoming',
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                champion_declared INTEGER DEFAULT 0
+            )
+        ''')
+        
+        # Tournament participants table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS tournament_participants (
+                tournament_id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                PRIMARY KEY (tournament_id, username)
+            )
+        ''')
+        
+        # Fixtures table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS fixtures (
+                id TEXT PRIMARY KEY,
+                league_id TEXT,
+                tournament_id TEXT,
+                home_team TEXT NOT NULL,
+                away_team TEXT NOT NULL,
+                date TEXT NOT NULL,
+                time TEXT NOT NULL,
+                result TEXT,
+                status TEXT DEFAULT 'scheduled',
+                round TEXT,
+                played INTEGER DEFAULT 0,
+                winner TEXT
+            )
+        ''')
+        
+        # Chat messages table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id TEXT PRIMARY KEY,
+                league_id TEXT,
+                tournament_id TEXT,
+                username TEXT NOT NULL,
+                message TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                time_display TEXT NOT NULL
+            )
+        ''')
+        
+        # Champions table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS champions (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL,
+                competition_name TEXT NOT NULL,
+                champion TEXT NOT NULL,
+                date TEXT NOT NULL,
+                season TEXT NOT NULL
+            )
+        ''')
+        
+        # Admin photos table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS admin_photos (
+                id TEXT PRIMARY KEY,
+                from_user TEXT NOT NULL,
+                photo_url TEXT NOT NULL,
+                caption TEXT,
+                match_id TEXT,
+                timestamp TEXT NOT NULL,
+                status TEXT DEFAULT 'pending'
+            )
+        ''')
+        
+        # Insert default admin user
+        cursor = conn.execute('SELECT * FROM users WHERE username = ?', ('pro_gamer',))
+        if not cursor.fetchone():
             conn.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
-                    password TEXT NOT NULL,
-                    joined TEXT NOT NULL,
-                    is_admin INTEGER DEFAULT 0
-                )
-            ''')
-            
-            # Posts table
+                INSERT INTO users (id, username, password, joined, is_admin)
+                VALUES (?, ?, ?, ?, ?)
+            ''', ('u2', 'pro_gamer', 'goal2026', datetime.now().strftime('%Y-%m-%d'), 1))
+        
+        # Insert default regular user
+        cursor = conn.execute('SELECT * FROM users WHERE username = ?', ('efootball_fan',))
+        if not cursor.fetchone():
             conn.execute('''
-                CREATE TABLE IF NOT EXISTS posts (
-                    id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    excerpt TEXT,
-                    body TEXT NOT NULL,
-                    image_label TEXT,
-                    date TEXT NOT NULL,
-                    author_id TEXT,
-                    author_name TEXT
-                )
-            ''')
-            
-            # Comments table
+                INSERT INTO users (id, username, password, joined, is_admin)
+                VALUES (?, ?, ?, ?, ?)
+            ''', ('u1', 'efootball_fan', 'pass123', datetime.now().strftime('%Y-%m-%d'), 0))
+        
+        # Insert default post
+        cursor = conn.execute('SELECT * FROM posts LIMIT 1')
+        if not cursor.fetchone():
             conn.execute('''
-                CREATE TABLE IF NOT EXISTS comments (
-                    id TEXT PRIMARY KEY,
-                    post_id TEXT NOT NULL,
-                    user_id TEXT NOT NULL,
-                    user_name TEXT NOT NULL,
-                    text TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-            ''')
-            
-            # Leagues table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS leagues (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    created_by TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    status TEXT DEFAULT 'active',
-                    champion_declared INTEGER DEFAULT 0
-                )
-            ''')
-            
-            # League members table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS league_members (
-                    league_id TEXT NOT NULL,
-                    username TEXT NOT NULL,
-                    PRIMARY KEY (league_id, username)
-                )
-            ''')
-            
-            # League standings table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS league_standings (
-                    league_id TEXT NOT NULL,
-                    username TEXT NOT NULL,
-                    played INTEGER DEFAULT 0,
-                    won INTEGER DEFAULT 0,
-                    drawn INTEGER DEFAULT 0,
-                    lost INTEGER DEFAULT 0,
-                    goals_for INTEGER DEFAULT 0,
-                    goals_against INTEGER DEFAULT 0,
-                    goal_difference INTEGER DEFAULT 0,
-                    points INTEGER DEFAULT 0,
-                    PRIMARY KEY (league_id, username)
-                )
-            ''')
-            
-            # Tournaments table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS tournaments (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    league_id TEXT NOT NULL,
-                    league_name TEXT NOT NULL,
-                    description TEXT,
-                    start_date TEXT NOT NULL,
-                    end_date TEXT NOT NULL,
-                    max_participants INTEGER DEFAULT 16,
-                    status TEXT DEFAULT 'upcoming',
-                    created_by TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    champion_declared INTEGER DEFAULT 0
-                )
-            ''')
-            
-            # Tournament participants table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS tournament_participants (
-                    tournament_id TEXT NOT NULL,
-                    username TEXT NOT NULL,
-                    PRIMARY KEY (tournament_id, username)
-                )
-            ''')
-            
-            # Fixtures table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS fixtures (
-                    id TEXT PRIMARY KEY,
-                    league_id TEXT,
-                    tournament_id TEXT,
-                    home_team TEXT NOT NULL,
-                    away_team TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    time TEXT NOT NULL,
-                    result TEXT,
-                    status TEXT DEFAULT 'scheduled',
-                    round TEXT,
-                    played INTEGER DEFAULT 0,
-                    winner TEXT
-                )
-            ''')
-            
-            # Chat messages table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS chat_messages (
-                    id TEXT PRIMARY KEY,
-                    league_id TEXT,
-                    tournament_id TEXT,
-                    username TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
-                    time_display TEXT NOT NULL
-                )
-            ''')
-            
-            # Champions table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS champions (
-                    id TEXT PRIMARY KEY,
-                    type TEXT NOT NULL,
-                    competition_name TEXT NOT NULL,
-                    champion TEXT NOT NULL,
-                    date TEXT NOT NULL,
-                    season TEXT NOT NULL
-                )
-            ''')
-            
-            # Admin photos table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS admin_photos (
-                    id TEXT PRIMARY KEY,
-                    from_user TEXT NOT NULL,
-                    photo_url TEXT NOT NULL,
-                    caption TEXT,
-                    match_id TEXT,
-                    timestamp TEXT NOT NULL,
-                    status TEXT DEFAULT 'pending'
-                )
-            ''')
-            
-            # Insert default admin user
-            cursor = conn.execute('SELECT * FROM users WHERE username = ?', ('pro_gamer',))
-            if not cursor.fetchone():
-                conn.execute('''
-                    INSERT INTO users (id, username, password, joined, is_admin)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', ('u2', 'pro_gamer', 'goal2026', datetime.now().strftime('%Y-%m-%d'), 1))
-            
-            # Insert default regular user
-            cursor = conn.execute('SELECT * FROM users WHERE username = ?', ('efootball_fan',))
-            if not cursor.fetchone():
-                conn.execute('''
-                    INSERT INTO users (id, username, password, joined, is_admin)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', ('u1', 'efootball_fan', 'pass123', datetime.now().strftime('%Y-%m-%d'), 0))
-            
-            # Insert default post
-            cursor = conn.execute('SELECT * FROM posts LIMIT 1')
-            if not cursor.fetchone():
-                conn.execute('''
-                    INSERT INTO posts (id, title, excerpt, body, image_label, date, author_id, author_name)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', ('p1', 'eFootball 2026: Next Generation Update', 
-                      'Konami unveils revolutionary gameplay mechanics for 2026...',
-                      'The latest eFootball 2026 update introduces revolutionary AI, cross-platform progression, and the new Ultimate Team mode.',
-                      '⚽', 'January 15, 2026', 'sys', 'Konami Insider'))
-
-        print("Database initialized successfully")
-    except Exception as e:
-        print(f"Database initialization error: {e}")
-        # Create a simple fallback
-        with open(os.path.join(DATA_DIR, 'init_log.txt'), 'w') as f:
-            f.write(f"Error: {e}\n")
+                INSERT INTO posts (id, title, excerpt, body, image_label, date, author_id, author_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', ('p1', 'eFootball 2026: Next Generation Update', 
+                  'Konami unveils revolutionary gameplay mechanics for 2026...',
+                  'The latest eFootball 2026 update introduces revolutionary AI, cross-platform progression, and the new Ultimate Team mode.',
+                  '⚽', 'January 15, 2026', 'sys', 'Konami Insider'))
+    
+    print("Database initialized successfully")
 
 # ==================== DATABASE HELPER FUNCTIONS ====================
 
@@ -478,16 +471,6 @@ def generate_league_fixtures(league_id, members):
             'winner': None
         }
         save_fixture(fixture)
-    
-    total_matches = len(schedule)
-    matches_per_team = total_matches * 2 // len(members) if len(members) > 0 else 0
-    
-    socketio.emit('chat_message', {
-        'username': '⚽ League Bot',
-        'message': f'🏆 League fixtures generated!\n\n📊 {len(members)} teams\n⚽ {total_matches} total matches\n🎯 Each team will play {matches_per_team} matches',
-        'timestamp': datetime.now().strftime('%H:%M:%S'),
-        'is_system': True
-    }, room=f"league_{league_id}")
 
 def update_league_standings(league_id):
     leagues = get_leagues()
@@ -1226,6 +1209,14 @@ def get_all_users():
 
 # ==================== SOCKET.IO CHAT EVENTS ====================
 
+@socketio.on('connect')
+def handle_connect():
+    print('Client connected')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Client disconnected')
+
 @socketio.on('join_user_room')
 def handle_join_user_room():
     username = session.get('user', {}).get('username')
@@ -1436,24 +1427,12 @@ def handle_send_tournament_chat_message(data):
             'is_system': False
         }, room=f"tournament_{tournament_id}")
 
-# ==================== ERROR HANDLERS ====================
-
-@app.errorhandler(404)
-def not_found_error(error):
-    return "Page not found", 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    print("=" * 50)
-    print("ERROR TRACEBACK:")
-    traceback.print_exc()
-    print("=" * 50)
-    return "Internal server error", 500
-
 # ==================== RUN APP ====================
 
 if __name__ == '__main__':
+    # Initialize database BEFORE starting the server
     init_database()
+    
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     socketio.run(app, debug=debug, host='0.0.0.0', port=port)
